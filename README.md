@@ -34,7 +34,13 @@ linux/arm, linux/ppc64le, linux/s390x, and linux/riscv64.
 ### Removing existing keys during install
 
 If you are replacing an old key installer and want key-daemon to start with a
-fresh `authorized_keys` file, set `RESET_KEYS=1`:
+fresh `authorized_keys` file, use `--reset-keys`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matthewgall/key-daemon/main/scripts/install.sh | sudo bash -s -- --reset-keys
+```
+
+Or with an environment variable:
 
 ```bash
 RESET_KEYS=1 curl -fsSL https://raw.githubusercontent.com/matthewgall/key-daemon/main/scripts/install.sh | sudo bash
@@ -42,10 +48,10 @@ RESET_KEYS=1 curl -fsSL https://raw.githubusercontent.com/matthewgall/key-daemon
 
 The current file is copied to `~/.ssh/authorized_keys.install-backup.<timestamp>`
 before being removed; key-daemon recreates it on the next sync. To reset a
-user other than root, set `RESET_KEYS_USER`:
+user other than root, pass `--reset-keys-user`:
 
 ```bash
-RESET_KEYS=1 RESET_KEYS_USER=alice curl -fsSL ... | sudo bash
+curl -fsSL https://raw.githubusercontent.com/matthewgall/key-daemon/main/scripts/install.sh | sudo bash -s -- --reset-keys --reset-keys-user=alice
 ```
 
 This installs:
