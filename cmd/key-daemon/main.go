@@ -12,6 +12,7 @@ import (
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/controller"
 	"github.com/matthewgall/key-daemon/internal/logger"
+	"github.com/matthewgall/key-daemon/internal/selfupdate"
 	"github.com/matthewgall/key-daemon/internal/update"
 )
 
@@ -77,6 +78,22 @@ func run(args []string) error {
 		ctrl.SetVersion(version)
 		return ctrl.Sync(context.Background())
 
+	case "self-update":
+		updater, err := selfupdate.New()
+		if err != nil {
+			return fmt.Errorf("initialise self-update: %w", err)
+		}
+		newVersion, err := updater.Run(context.Background(), version)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Updated to %s at %s\n", newVersion, updater.InstallPath())
+		fmt.Println("Restarting key-daemon service...")
+		if err := selfupdate.RestartService(); err != nil {
+			return fmt.Errorf("restart service: %w", err)
+		}
+		return nil
+
 	case "run":
 		ctrl := controller.New(cfgPath, log)
 		ctrl.SetVersion(version)
@@ -85,6 +102,6 @@ func run(args []string) error {
 		return ctrl.Run(ctx)
 
 	default:
-		return fmt.Errorf("unknown subcommand %q (expected run, sync, or version)", subcommand)
+		return fmt.Errorf("unknown subcommand %q (expected run, sync, version, or self-update)", subcommand)
 	}
 }
