@@ -133,6 +133,7 @@ type Config struct {
 	DiscoverUserConfigs bool     `yaml:"discover_user_configs"`
 	AllowedUserSources  []string `yaml:"allowed_user_sources"`
 	DiscoverSkipShells  []string `yaml:"discover_skip_shells"`
+	RunValidation       bool     `yaml:"validate"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -172,6 +173,7 @@ func Default() *Config {
 			"/usr/sbin/nologin",
 			"/usr/bin/nologin",
 		},
+		RunValidation: true,
 	}
 }
 

@@ -209,8 +209,18 @@ main() {
 
   if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
     log "writing default config"
-    cat > "${CONFIG_DIR}/config.yaml" <<'EOF'
+
+    # Dropbear systems do not ship an OpenSSH sshd binary, so sshd -t
+    # validation cannot run. Detect that and disable validation.
+    VALIDATE_LINE="validate: true"
+    if ! command -v sshd >/dev/null 2>&1 && [ ! -x "/usr/sbin/sshd" ] && [ ! -x "/usr/local/sbin/sshd" ] && [ ! -x "/sbin/sshd" ]; then
+      warn "OpenSSH sshd not found; disabling sshd -t validation in default config"
+      VALIDATE_LINE="validate: false"
+    fi
+
+    cat > "${CONFIG_DIR}/config.yaml" <<EOF
 interval: 5m
+${VALIDATE_LINE}
 users:
   - name: root
     sources:
