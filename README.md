@@ -176,6 +176,23 @@ key-daemon sync -config /etc/key-daemon/config.yaml
 
 Log levels are `debug`, `info`, `warn`, `error`. The daemon logs structured lines to stderr, which are captured by systemd/journald when run as a service.
 
+### Update checks
+
+To be notified when a new release is available, enable GitHub Releases checks
+in the config:
+
+```yaml
+check_for_updates: true
+update_check_interval: 24h
+```
+
+When enabled, the daemon logs a warning with the latest version and download
+URL. To check manually from the command line:
+
+```bash
+key-daemon version --check
+```
+
 ## Building
 
 Requirements: Go 1.23+

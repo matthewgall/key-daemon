@@ -18,6 +18,7 @@ import (
 	"github.com/matthewgall/key-daemon/internal/logger"
 	"github.com/matthewgall/key-daemon/internal/sources"
 	"github.com/matthewgall/key-daemon/internal/sshd"
+	"github.com/matthewgall/key-daemon/internal/update"
 	"github.com/matthewgall/key-daemon/internal/user"
 )
 
@@ -52,16 +53,23 @@ type userDiscoverer interface {
 	Discover() ([]discovery.User, error)
 }
 
+// updateChecker queries GitHub Releases for newer versions.
+type updateChecker interface {
+	LatestRelease(ctx context.Context) (*update.Info, error)
+}
+
 // Controller orchestrates periodic key synchronization.
 type Controller struct {
 	configPath string
 	log        *logger.Logger
+	version    string
 
 	resolver   userResolver
 	provider   keyProvider
 	manager    keyManager
 	validator  authkeys.ValidateFunc
 	discoverer userDiscoverer
+	checker    updateChecker
 
 	// For tests: interval override.
 	interval time.Duration
@@ -70,6 +78,8 @@ type Controller struct {
 	// For tests: override runtime user checks.
 	currentUserFn currentUserFunc
 	isRootFn      isRootFunc
+	// lastUpdateCheck tracks when we last queried for updates.
+	lastUpdateCheck time.Time
 }
 
 // New creates a Controller using production dependencies.
@@ -83,9 +93,15 @@ func New(configPath string, log *logger.Logger) *Controller {
 		manager:       nil, // created per-config inside sync
 		validator:     sshd.NewValidator().Validate,
 		discoverer:    nil, // set after config is loaded
+		checker:       update.NewChecker(),
 		currentUserFn: osuserCurrent,
 		isRootFn:      isRoot,
 	}
+}
+
+// SetVersion sets the running daemon version. Used for update checks.
+func (c *Controller) SetVersion(v string) {
+	c.version = v
 }
 
 func osuserCurrent() (string, error) {
@@ -113,6 +129,11 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	if err := c.Sync(ctx); err != nil {
 		c.log.Error("initial sync completed with errors", map[string]string{"error": err.Error()})
+	}
+
+	cfg, _ := c.loadConfig()
+	if cfg != nil {
+		c.maybeCheckForUpdates(ctx, cfg)
 	}
 
 	return c.runLoop(ctx, sigCh)
@@ -156,8 +177,43 @@ func (c *Controller) runLoop(ctx context.Context, sigCh chan os.Signal) error {
 		case <-timer.C:
 			if err := c.Sync(ctx); err != nil {
 				c.log.Error("sync cycle completed with errors", map[string]string{"error": err.Error()})
+			} else if cfg, err := c.loadConfig(); err == nil {
+				c.maybeCheckForUpdates(ctx, cfg)
 			}
 		}
+	}
+}
+
+// maybeCheckForUpdates logs a warning if a newer release is available.
+// It is a no-op if the config disables update checks or if the last check
+// is within the configured interval.
+func (c *Controller) maybeCheckForUpdates(ctx context.Context, cfg *config.Config) {
+	if !cfg.CheckForUpdates || c.version == "" || c.version == "dev" || c.checker == nil {
+		return
+	}
+
+	now := time.Now()
+	if !c.lastUpdateCheck.IsZero() && now.Sub(c.lastUpdateCheck) < cfg.UpdateCheckInterval.Duration() {
+		return
+	}
+	c.lastUpdateCheck = now
+
+	latest, err := c.checker.LatestRelease(ctx)
+	if err != nil {
+		c.log.Debug("failed to check for updates", map[string]string{"error": err.Error()})
+		return
+	}
+
+	if update.IsNewer(c.version, latest.Version) {
+		c.log.Warn("a newer version of key-daemon is available",
+			map[string]string{
+				"current":     c.version,
+				"latest":      latest.Version,
+				"download_url": latest.URL,
+			})
+	} else {
+		c.log.Debug("key-daemon is up to date",
+			map[string]string{"current": c.version, "latest": latest.Version})
 	}
 }
 

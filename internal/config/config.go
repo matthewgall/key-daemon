@@ -11,16 +11,18 @@ import (
 )
 
 const (
-	DefaultInterval     = 5 * time.Minute
-	MinInterval         = 1 * time.Minute
-	DefaultBeginMarker  = "# BEGIN key-daemon"
-	DefaultEndMarker    = "# END key-daemon"
-	DefaultMaxBackups   = 10
-	DefaultMaxBackupAge = 7 * 24 * time.Hour
-	MinMaxBackups       = 1
-	MaxMaxBackups       = 1000
-	MinMaxBackupAge     = 1 * time.Hour
-	DefaultConfigPath   = "/etc/key-daemon/config.yaml"
+	DefaultInterval            = 5 * time.Minute
+	MinInterval                = 1 * time.Minute
+	DefaultBeginMarker         = "# BEGIN key-daemon"
+	DefaultEndMarker           = "# END key-daemon"
+	DefaultMaxBackups          = 10
+	DefaultMaxBackupAge        = 7 * 24 * time.Hour
+	MinMaxBackups              = 1
+	MaxMaxBackups              = 1000
+	MinMaxBackupAge            = 1 * time.Hour
+	DefaultConfigPath          = "/etc/key-daemon/config.yaml"
+	DefaultUpdateCheckInterval = 24 * time.Hour
+	MinUpdateCheckInterval     = 1 * time.Hour
 )
 
 // Source represents a single key source: a URL, GitHub user, or sshid.io handle.
@@ -134,6 +136,8 @@ type Config struct {
 	AllowedUserSources  []string `yaml:"allowed_user_sources"`
 	DiscoverSkipShells  []string `yaml:"discover_skip_shells"`
 	RunValidation       bool     `yaml:"validate"`
+	CheckForUpdates     bool     `yaml:"check_for_updates"`
+	UpdateCheckInterval Duration `yaml:"update_check_interval"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -173,7 +177,9 @@ func Default() *Config {
 			"/usr/sbin/nologin",
 			"/usr/bin/nologin",
 		},
-		RunValidation: true,
+		RunValidation:   true,
+		CheckForUpdates: false,
+		UpdateCheckInterval: Duration(DefaultUpdateCheckInterval),
 	}
 }
 
@@ -188,6 +194,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Markers.Begin == c.Markers.End {
 		return errors.New("marker begin and end must be different")
+	}
+
+	if c.UpdateCheckInterval.Duration() < MinUpdateCheckInterval {
+		return fmt.Errorf("update_check_interval must be at least %s", MinUpdateCheckInterval)
 	}
 
 	if c.Backups.MaxCount < MinMaxBackups || c.Backups.MaxCount > MaxMaxBackups {
