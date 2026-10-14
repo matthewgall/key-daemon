@@ -304,6 +304,9 @@ func (c *Controller) syncUser(ctx context.Context, cfg *config.Config, u config.
 	if !c.isRootFn() {
 		c.log.Debug("skipping sshd validation in single-user mode", map[string]string{"user": u.Name})
 		validate = nil
+	} else if !cfg.RunValidation {
+		c.log.Warn("sshd validation disabled in config", map[string]string{"user": u.Name})
+		validate = nil
 	}
 
 	updated, err := c.manager.Sync(info, managed, validate)

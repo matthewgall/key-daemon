@@ -3,6 +3,7 @@ package sshd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,8 +68,11 @@ func TestValidateDetectsMissingHostKeys(t *testing.T) {
 
 func TestNewValidator(t *testing.T) {
 	v := NewValidator()
-	if v.sshdPath != "sshd" {
-		t.Errorf("expected sshdPath sshd, got %q", v.sshdPath)
+	if v.sshdPath == "" {
+		t.Error("expected non-empty sshdPath")
+	}
+	if p, err := exec.LookPath("sshd"); err == nil && v.sshdPath != p {
+		t.Errorf("expected sshdPath %q, got %q", p, v.sshdPath)
 	}
 }
 

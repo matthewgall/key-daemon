@@ -14,13 +14,34 @@ import (
 // can validate files in root mode.
 var ErrNoHostKeys = errors.New("sshd has no host keys; run ssh-keygen -A")
 
+// commonSSHDPaths lists typical locations for the sshd binary on Linux
+// distributions. It is consulted when sshd is not found in $PATH.
+var commonSSHDPaths = []string{
+	"/usr/sbin/sshd",
+	"/usr/local/sbin/sshd",
+	"/sbin/sshd",
+}
+
 // Validator runs sshd -t against a candidate authorized_keys file.
 type Validator struct {
 	sshdPath string
 }
 
 // NewValidator creates a Validator that uses the system sshd binary.
+// It searches $PATH first, then falls back to common system locations.
 func NewValidator() *Validator {
+	path, err := exec.LookPath("sshd")
+	if err == nil {
+		return &Validator{sshdPath: path}
+	}
+
+	for _, p := range commonSSHDPaths {
+		if _, err := os.Stat(p); err == nil {
+			return &Validator{sshdPath: p}
+		}
+	}
+
+	// Return a validator that will produce a clear error at validation time.
 	return &Validator{sshdPath: "sshd"}
 }
 

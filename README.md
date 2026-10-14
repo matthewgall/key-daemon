@@ -196,6 +196,19 @@ make clean         # remove built artifacts
 5. If validation passes, the existing `authorized_keys` is backed up and the candidate is atomically promoted.
 6. Old backups are pruned according to `backups.max_count` and `backups.max_age`.
 
+## SSH server compatibility
+
+`sshd -t` validation is used by default to verify the candidate
+`authorized_keys` file before promoting it. If your system uses a different
+SSH server such as **dropbear**, set `validate: false` in the config:
+
+```yaml
+validate: false
+```
+
+The install script automatically detects missing `sshd` and writes a default
+config with validation disabled.
+
 ## License
 
 MIT

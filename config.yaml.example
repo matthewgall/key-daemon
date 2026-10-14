@@ -6,6 +6,10 @@ backups:
   max_count: 10
   max_age: 7d
 
+# Validate authorized_keys with sshd -t before installing them.
+# Set to false if your system uses a different SSH server (e.g. dropbear).
+validate: true
+
 # Discover per-user configs in ~/.config/key-daemon/config.yaml.
 discover_user_configs: false
 
