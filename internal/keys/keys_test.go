@@ -70,6 +70,14 @@ func TestParseLineInvalid(t *testing.T) {
 	}
 }
 
+func TestParseLineRejectsOverlongLines(t *testing.T) {
+	line := strings.Repeat("a", MaxKeyLineLength+1)
+	_, err := ParseLine(line)
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum length") {
+		t.Fatalf("expected max-length error, got: %v", err)
+	}
+}
+
 func TestParseRejectsHTML(t *testing.T) {
 	_, err := Parse("<!DOCTYPE html><html><body>oops</body></html>")
 	if err == nil || !strings.Contains(err.Error(), "HTML") {

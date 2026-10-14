@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+// MaxKeyLineLength is the maximum length of a single authorized_keys line
+// that will be parsed. Longer lines are rejected to avoid memory exhaustion.
+const MaxKeyLineLength = 16 * 1024 // 16 KiB
+
 var (
 	keyTypes = map[string]struct{}{
 		"ssh-rsa":                            {},
@@ -43,6 +47,10 @@ func IsValidKeyType(t string) bool {
 // ParseLine attempts to parse a single authorized_keys line.
 // It returns nil for empty lines and comments.
 func ParseLine(line string) (*Key, error) {
+	if len(line) > MaxKeyLineLength {
+		return nil, fmt.Errorf("line exceeds maximum length of %d bytes", MaxKeyLineLength)
+	}
+
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 		return nil, nil
