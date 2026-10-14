@@ -27,8 +27,10 @@ esac
 VERSION="${VERSION:-latest}"
 if [ "$VERSION" = "latest" ]; then
   DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
+  CHECKSUMS_URL="https://github.com/${REPO}/releases/latest/download/checksums.txt"
 else
   DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}"
+  CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 fi
 
 # Allow local override for development.
@@ -50,6 +52,7 @@ init_system() {
 
 main() {
   require_cmd curl
+  require_cmd sha256sum
 
   if [ "$(id -u)" -ne 0 ]; then
     die "this script must be run as root"
@@ -74,7 +77,24 @@ main() {
   if [ -n "$LOCAL_BINARY" ]; then
     cp "$LOCAL_BINARY" "${INSTALL_DIR}/key-daemon"
   else
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"; rm -f "${INSTALL_DIR}/key-daemon"' EXIT
+
     curl -fsSL --retry 3 --retry-delay 1 -o "${INSTALL_DIR}/key-daemon" "$DOWNLOAD_URL"
+    curl -fsSL --retry 3 --retry-delay 1 -o "${TMP_DIR}/checksums.txt" "$CHECKSUMS_URL"
+
+    log "verifying binary checksum"
+    EXPECTED=$(awk -v b="$BINARY" '$2 == b {print $1}' "${TMP_DIR}/checksums.txt")
+    if [ -z "$EXPECTED" ]; then
+      die "checksum not found for ${BINARY}"
+    fi
+    COMPUTED=$(sha256sum "${INSTALL_DIR}/key-daemon" | awk '{print $1}')
+    if [ "$COMPUTED" != "$EXPECTED" ]; then
+      die "checksum verification failed for ${BINARY}"
+    fi
+
+    rm -rf "$TMP_DIR"
+    trap - EXIT
   fi
   chmod 0755 "${INSTALL_DIR}/key-daemon"
 
