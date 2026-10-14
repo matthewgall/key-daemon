@@ -28,6 +28,9 @@ make static
 sudo LOCAL_BINARY=./key-daemon-linux-amd64 ./scripts/install.sh
 ```
 
+Pre-built binaries are provided for linux/amd64, linux/arm64, linux/386,
+linux/arm, linux/ppc64le, linux/s390x, and linux/riscv64.
+
 This installs:
 
 - `/usr/local/bin/key-daemon`
@@ -157,7 +160,7 @@ Requirements: Go 1.23+
 ```bash
 make test          # run all tests
 make build         # build ./key-daemon for the current platform
-make static        # build linux/amd64 and linux/arm64 static binaries
+make static        # build static binaries for all supported architectures
 make clean         # remove built artifacts
 ```
 
