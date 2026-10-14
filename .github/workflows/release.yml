@@ -37,7 +37,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-X main.version=${GITHUB_REF_NAME} -s -w" -o key-daemon-linux-${{ matrix.goarch }} ./cmd/key-daemon
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v8
         with:
           name: key-daemon-linux-${{ matrix.goarch }}
           path: key-daemon-linux-${{ matrix.goarch }}
@@ -49,7 +49,7 @@ jobs:
     needs: build
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: key-daemon-linux-*
