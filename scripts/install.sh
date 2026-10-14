@@ -223,10 +223,11 @@ interval: 5m
 ${VALIDATE_LINE}
 users:
   - name: root
-    sources:
-      - url:https://download.matthewgall.dev/ssh/keys
-      - github:matthewgall
-      - sshid:matthewgall
+    sources: []
+    # Add your own sources below, for example:
+    #   - url:https://example.com/keys
+    #   - github:yourusername
+    #   - sshid:yourusername
 EOF
     chmod 0644 "${CONFIG_DIR}/config.yaml"
   else

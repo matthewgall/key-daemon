@@ -6,7 +6,7 @@ A small, statically-linked daemon that keeps your servers' `authorized_keys` fil
 
 - **Static Go binary** — no runtime dependencies.
 - **Config-driven** — define users, sources, and sync intervals in YAML.
-- **Multiple source types** — raw HTTPS URLs, GitHub usernames (`github:matthewgall`), and sshid.io handles (`sshid:matthewgall`).
+- **Multiple source types** — raw HTTPS URLs, GitHub usernames (`github:yourusername`), and sshid.io handles (`sshid:yourusername`).
 - **Safe updates** — only rewrites a marked section inside `~/.ssh/authorized_keys`, leaving manually added keys untouched.
 - **Pre-commit validation** — every candidate file is checked with `sshd -t` before it goes live.
 - **Automated backups** — previous `authorized_keys` files are backed up and pruned by count and age.
@@ -90,7 +90,7 @@ backups:
 
 # Sources applied to any user that does not define its own.
 default_sources:
-  - url:https://download.matthewgall.dev/ssh/keys
+  - url:https://example.com/keys
 
 # When true, root scans /etc/passwd and honors per-user config files.
 discover_user_configs: false
@@ -103,13 +103,13 @@ allowed_user_sources:
 users:
   - name: root
     sources:
-      - url:https://download.matthewgall.dev/ssh/keys
-      - github:matthewgall
-      - sshid:matthewgall
+      - url:https://example.com/keys
+      - github:yourusername
+      - sshid:yourusername
 
-  - name: matthew
+  - name: alice
     sources:
-      - github:matthewgall
+      - github:alice
 ```
 
 ### Per-user config
@@ -118,8 +118,8 @@ Users can place their own config in `~/.config/key-daemon/config.yaml`. Root sti
 
 ```yaml
 sources:
-  - github:matthewgall
-  - sshid:matthewgall
+  - github:yourusername
+  - sshid:yourusername
 ```
 
 A per-user config file must:
