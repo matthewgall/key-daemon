@@ -1,11 +1,18 @@
 package sshd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
+
+// ErrNoHostKeys is returned when sshd -t fails because the system has no
+// SSH host keys. The operator should run ssh-keygen -A before key-daemon
+// can validate files in root mode.
+var ErrNoHostKeys = errors.New("sshd has no host keys; run ssh-keygen -A")
 
 // Validator runs sshd -t against a candidate authorized_keys file.
 type Validator struct {
@@ -42,7 +49,19 @@ func (v *Validator) Validate(candidatePath string) error {
 	cmd := exec.Command(v.sshdPath, "-t", "-f", cfgPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("sshd -t failed: %w\n%s", err, string(out))
+		outStr := string(out)
+		if isNoHostKeysError(outStr) {
+			return fmt.Errorf("%w: %s", ErrNoHostKeys, outStr)
+		}
+		return fmt.Errorf("sshd -t failed: %w\n%s", err, outStr)
 	}
 	return nil
+}
+
+// isNoHostKeysError reports whether sshd -t output indicates the system has
+// no host keys available.
+func isNoHostKeysError(out string) bool {
+	lower := strings.ToLower(out)
+	return strings.Contains(lower, "no hostkeys available") ||
+		strings.Contains(lower, "could not load host key")
 }

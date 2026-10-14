@@ -109,6 +109,43 @@ func TestRedactURL(t *testing.T) {
 	}
 }
 
+func TestFetchAcceptsUppercaseHTTPSScheme(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "ok")
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	c.httpClient = server.Client()
+
+	upper := strings.Replace(server.URL, "https://", "HTTPS://", 1)
+	body, err := c.Fetch(context.Background(), upper+"/keys")
+	if err != nil {
+		t.Fatalf("Fetch failed: %v", err)
+	}
+	if !strings.Contains(body, "ok") {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestFetchResponseHeaderTimeout(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		fmt.Fprint(w, "late")
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	tr := server.Client().Transport.(*http.Transport)
+	tr.ResponseHeaderTimeout = 50 * time.Millisecond
+	c.httpClient.Transport = tr
+
+	_, err := c.Fetch(context.Background(), server.URL)
+	if err == nil {
+		t.Fatal("expected response header timeout error")
+	}
+}
+
 func TestFetchContextCancellation(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)

@@ -107,7 +107,7 @@ func (m *Manager) RestoreLatestBackup(u *user.Info) error {
 		return err
 	}
 
-	backups, err := m.listBackups(sshDir)
+	backups, err := m.listBackups(sshDir, u)
 	if err != nil {
 		return err
 	}
@@ -290,7 +290,7 @@ type backupFile struct {
 	modTime time.Time
 }
 
-func (m *Manager) listBackups(sshDir string) ([]backupFile, error) {
+func (m *Manager) listBackups(sshDir string, u *user.Info) ([]backupFile, error) {
 	entries, err := os.ReadDir(sshDir)
 	if err != nil {
 		return nil, err
@@ -301,12 +301,23 @@ func (m *Manager) listBackups(sshDir string) ([]backupFile, error) {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), backupNamePrefix) || !strings.HasSuffix(e.Name(), ".bak") {
 			continue
 		}
-		info, err := e.Info()
+		path := filepath.Join(sshDir, e.Name())
+		info, err := os.Lstat(path)
 		if err != nil {
 			return nil, err
 		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return nil, fmt.Errorf("could not determine ownership of %s", path)
+		}
+		if int(stat.Uid) != u.UID {
+			continue
+		}
 		backups = append(backups, backupFile{
-			path:    filepath.Join(sshDir, e.Name()),
+			path:    path,
 			modTime: info.ModTime(),
 		})
 	}
@@ -318,7 +329,7 @@ func (m *Manager) listBackups(sshDir string) ([]backupFile, error) {
 }
 
 func (m *Manager) pruneBackups(sshDir string, u *user.Info) error {
-	backups, err := m.listBackups(sshDir)
+	backups, err := m.listBackups(sshDir, u)
 	if err != nil {
 		return err
 	}

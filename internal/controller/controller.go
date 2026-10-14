@@ -308,6 +308,10 @@ func (c *Controller) syncUser(ctx context.Context, cfg *config.Config, u config.
 
 	updated, err := c.manager.Sync(info, managed, validate)
 	if err != nil {
+		if errors.Is(err, sshd.ErrNoHostKeys) {
+			c.log.Error("sshd validation cannot run because the system has no SSH host keys; run 'ssh-keygen -A' and restart key-daemon",
+				map[string]string{"user": u.Name})
+		}
 		return fmt.Errorf("sync authorized_keys: %w", err)
 	}
 

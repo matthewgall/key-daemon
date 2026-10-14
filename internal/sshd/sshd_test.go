@@ -47,6 +47,24 @@ func TestValidateMissingCandidate(t *testing.T) {
 	}
 }
 
+func TestValidateDetectsMissingHostKeys(t *testing.T) {
+	mockPath := writeMockSSHD(t, 1, "sshd: no hostkeys available")
+	v := &Validator{sshdPath: mockPath}
+
+	candidate := filepath.Join(t.TempDir(), "authorized_keys")
+	if err := os.WriteFile(candidate, []byte("test"), 0o600); err != nil {
+		t.Fatalf("write candidate: %v", err)
+	}
+
+	err := v.Validate(candidate)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "no host keys") {
+		t.Errorf("expected no-host-keys error, got: %v", err)
+	}
+}
+
 func TestNewValidator(t *testing.T) {
 	v := NewValidator()
 	if v.sshdPath != "sshd" {

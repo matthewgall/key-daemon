@@ -7,6 +7,8 @@ command_args="run --config /etc/key-daemon/config.yaml"
 pidfile="/run/${RC_SVCNAME}.pid"
 output_log="/var/log/key-daemon.log"
 error_log="/var/log/key-daemon.log"
+command_user="root:root"
+rc_ulimit="-n 1024"
 start_stop_daemon_args="--background --make-pidfile --stdout \"${output_log}\" --stderr \"${error_log}\""
 
 depend() {
