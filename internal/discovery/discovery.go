@@ -3,6 +3,7 @@ package discovery
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 	"github.com/matthewgall/key-daemon/internal/config"
 	"gopkg.in/yaml.v3"
 )
+
+const maxConfigSize = 1 * 1024 * 1024 // 1 MiB
 
 const userConfigPath = ".config/key-daemon/config.yaml"
 
@@ -114,19 +117,35 @@ func (d *Discoverer) shouldSkip(e passwdEntry) bool {
 }
 
 func (d *Discoverer) loadUserConfig(path string, uid int) ([]config.Source, error) {
-	if err := d.validatePermissions(path, uid); err != nil {
-		// Permission denied likely means the file exists but we cannot read it,
-		// or the home directory is inaccessible. Treat it as if there is no
-		// usable per-user config for this user.
+	// Open with O_NOFOLLOW so a symlink cannot be swapped between our
+	// permission check and the read. The file handle is then validated
+	// and read directly.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if os.IsNotExist(err) || os.IsPermission(err) {
+			return nil, os.ErrNotExist
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat config: %w", err)
+	}
+	if err := d.validatePermissionsFromInfo(info, uid); err != nil {
 		if os.IsPermission(err) {
 			return nil, os.ErrNotExist
 		}
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := io.ReadAll(io.LimitReader(f, maxConfigSize+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	if int64(len(data)) > maxConfigSize {
+		return nil, fmt.Errorf("config exceeds maximum size of %d bytes", maxConfigSize)
 	}
 
 	var cfg userConfig
@@ -155,12 +174,7 @@ func (d *Discoverer) isAllowedSource(src config.Source) bool {
 	return false
 }
 
-func (d *Discoverer) validatePermissions(path string, uid int) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-
+func (d *Discoverer) validatePermissionsFromInfo(info os.FileInfo, uid int) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return fmt.Errorf("could not determine ownership")
