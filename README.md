@@ -31,6 +31,23 @@ sudo LOCAL_BINARY=./key-daemon-linux-amd64 ./scripts/install.sh
 Pre-built binaries are provided for linux/amd64, linux/arm64, linux/386,
 linux/arm, linux/ppc64le, linux/s390x, and linux/riscv64.
 
+### Removing existing keys during install
+
+If you are replacing an old key installer and want key-daemon to start with a
+fresh `authorized_keys` file, set `RESET_KEYS=1`:
+
+```bash
+RESET_KEYS=1 curl -fsSL https://raw.githubusercontent.com/matthewgall/key-daemon/main/scripts/install.sh | sudo bash
+```
+
+The current file is copied to `~/.ssh/authorized_keys.install-backup.<timestamp>`
+before being removed; key-daemon recreates it on the next sync. To reset a
+user other than root, set `RESET_KEYS_USER`:
+
+```bash
+RESET_KEYS=1 RESET_KEYS_USER=alice curl -fsSL ... | sudo bash
+```
+
 This installs:
 
 - `/usr/local/bin/key-daemon`

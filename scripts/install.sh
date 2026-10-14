@@ -51,8 +51,41 @@ fi
 # Allow local override for development.
 LOCAL_BINARY="${LOCAL_BINARY:-}"
 
+# Set RESET_KEYS=1 to back up and remove the target user's existing
+# authorized_keys before starting key-daemon. The daemon will recreate the
+# file with managed keys on its next sync. RESET_KEYS_USER defaults to root.
+RESET_KEYS="${RESET_KEYS:-}"
+RESET_KEYS_USER="${RESET_KEYS_USER:-root}"
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+maybe_reset_keys() {
+  [ -n "${RESET_KEYS}" ] || return 0
+
+  local target_user home ssh_dir auth_keys backup
+  target_user="${RESET_KEYS_USER:-root}"
+  home=$(getent passwd "$target_user" | cut -d: -f6) || true
+
+  if [ -z "$home" ]; then
+    warn "cannot reset keys for '$target_user': user not found"
+    return 0
+  fi
+
+  ssh_dir="$home/.ssh"
+  auth_keys="$ssh_dir/authorized_keys"
+
+  if [ ! -f "$auth_keys" ]; then
+    log "no existing authorized_keys for $target_user; nothing to reset"
+    return 0
+  fi
+
+  backup="$auth_keys.install-backup.$(date +%Y%m%d%H%M%S)"
+  cp "$auth_keys" "$backup"
+  chmod 0600 "$backup"
+  rm -f "$auth_keys"
+  log "reset authorized_keys for $target_user (backed up to $backup)"
 }
 
 init_system() {
@@ -116,6 +149,8 @@ main() {
   log "creating config directory ${CONFIG_DIR}"
   mkdir -p "$CONFIG_DIR"
   chmod 0755 "$CONFIG_DIR"
+
+  maybe_reset_keys
 
   if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
     log "writing default config"
