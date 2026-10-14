@@ -5,15 +5,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 const (
-	defaultTimeout  = 30 * time.Second
-	defaultRetries  = 3
-	defaultRetryGap = 1 * time.Second
+	defaultTimeout   = 30 * time.Second
+	defaultRetries   = 3
+	defaultRetryGap  = 1 * time.Second
+	defaultMaxSize   = 5 * 1024 * 1024 // 5 MiB
 )
+
+// maxBodySize is the maximum response body the client will read. It can be
+// adjusted for tests.
+var maxBodySize int64 = defaultMaxSize
 
 // Client fetches text resources over HTTPS with retries.
 type Client struct {
@@ -29,6 +35,20 @@ func (c *Client) Client() *http.Client {
 }
 
 // NewClient creates a fetcher with sensible defaults.
+// redactURL returns a string suitable for logging: the scheme, host, and path
+// are preserved, but any userinfo and query values are redacted. Strings
+// without a URL scheme are returned unchanged.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return raw
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{
@@ -44,7 +64,7 @@ func NewClient() *Client {
 // Only HTTPS URLs are accepted.
 func (c *Client) Fetch(ctx context.Context, url string) (string, error) {
 	if !strings.HasPrefix(url, "https://") {
-		return "", fmt.Errorf("refusing to fetch non-https URL: %s", url)
+		return "", fmt.Errorf("refusing to fetch non-https URL: %s", redactURL(url))
 	}
 
 	var lastErr error
@@ -64,7 +84,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (string, error) {
 		lastErr = err
 	}
 
-	return "", fmt.Errorf("fetch %s failed after %d attempts: %w", url, c.retries+1, lastErr)
+	return "", fmt.Errorf("fetch %s failed after %d attempts: %w", redactURL(url), c.retries+1, lastErr)
 }
 
 func (c *Client) doFetch(ctx context.Context, url string) (string, error) {
@@ -85,9 +105,12 @@ func (c *Client) doFetch(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
 	if err != nil {
 		return "", err
+	}
+	if int64(len(data)) > maxBodySize {
+		return "", fmt.Errorf("response exceeds maximum size of %d bytes", maxBodySize)
 	}
 
 	return string(data), nil

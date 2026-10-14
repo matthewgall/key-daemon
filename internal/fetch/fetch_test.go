@@ -70,6 +70,45 @@ func TestFetchRetriesThenFails(t *testing.T) {
 	}
 }
 
+func TestFetchLimitsResponseSize(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 129 bytes of key data exceeds the tiny limit below.
+		fmt.Fprint(w, strings.Repeat("a", 129))
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	c.httpClient = server.Client()
+
+	oldMax := maxBodySize
+	maxBodySize = 128
+	defer func() { maxBodySize = oldMax }()
+
+	_, err := c.Fetch(context.Background(), server.URL)
+	if err == nil || !strings.Contains(err.Error(), "response exceeds maximum size") {
+		t.Fatalf("expected size-limit error, got: %v", err)
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"https://example.com/keys?token=secret", "https://example.com/keys"},
+		{"https://user:pass@example.com/keys", "https://example.com/keys"},
+		{"https://example.com/keys#frag", "https://example.com/keys"},
+		{"not a url", "not a url"},
+		{"/plain/path", "/plain/path"},
+	}
+	for _, tc := range cases {
+		got := redactURL(tc.in)
+		if got != tc.want {
+			t.Errorf("redactURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestFetchContextCancellation(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
