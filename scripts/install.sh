@@ -11,6 +11,59 @@ log() { echo "[key-daemon] $*"; }
 warn() { echo "[key-daemon] warning: $*" >&2; }
 die() { echo "[key-daemon] error: $*" >&2; exit 1; }
 
+usage() {
+  cat <<EOF
+Usage: $0 [OPTIONS]
+
+Install or upgrade key-daemon.
+
+Options:
+  -h, --help                Show this help message and exit
+      --reset-keys          Back up and remove the target user's existing
+                            authorized_keys before starting key-daemon
+      --reset-keys-user=U   Target user for --reset-keys (default: root)
+
+Environment variables:
+  VERSION                   Release to install, e.g. v1.0.6 (default: latest)
+  LOCAL_BINARY              Path to a local binary to install instead of
+                            downloading a release
+  RESET_KEYS                Set to 1 to enable --reset-keys behaviour
+  RESET_KEYS_USER           User to reset when RESET_KEYS is set
+                            (default: root)
+EOF
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --reset-keys)
+        RESET_KEYS=1
+        shift
+        ;;
+      --reset-keys-user)
+        if [ -z "${2:-}" ]; then
+          die "--reset-keys-user requires a value"
+        fi
+        RESET_KEYS_USER="$2"
+        RESET_KEYS=1
+        shift 2
+        ;;
+      --reset-keys-user=*)
+        RESET_KEYS_USER="${1#*=}"
+        RESET_KEYS=1
+        shift
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+    esac
+  done
+}
+
 ARCH=$(uname -m)
 case "$ARCH" in
   x86_64|amd64)
@@ -99,6 +152,8 @@ init_system() {
 }
 
 main() {
+  parse_args "$@"
+
   require_cmd curl
   require_cmd sha256sum
 
