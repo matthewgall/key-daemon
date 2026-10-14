@@ -12,6 +12,7 @@ import (
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/controller"
 	"github.com/matthewgall/key-daemon/internal/logger"
+	"github.com/matthewgall/key-daemon/internal/update"
 )
 
 var version = "dev"
@@ -51,15 +52,34 @@ func run(args []string) error {
 
 	switch subcommand {
 	case "version":
-		fmt.Println(version)
+		var check bool
+		fs.BoolVar(&check, "check", false, "Check GitHub Releases for a newer version")
+		if err := fs.Parse(flagArgs); err != nil {
+			return err
+		}
+		if !check {
+			fmt.Println(version)
+			return nil
+		}
+		info, err := update.NewChecker().LatestRelease(context.Background())
+		if err != nil {
+			return fmt.Errorf("check for updates: %w", err)
+		}
+		if update.IsNewer(version, info.Version) {
+			fmt.Printf("Current version: %s\nLatest version:  %s\nDownload:        %s\n", version, info.Version, info.URL)
+		} else {
+			fmt.Printf("key-daemon %s is up to date\n", version)
+		}
 		return nil
 
 	case "sync":
 		ctrl := controller.New(cfgPath, log)
+		ctrl.SetVersion(version)
 		return ctrl.Sync(context.Background())
 
 	case "run":
 		ctrl := controller.New(cfgPath, log)
+		ctrl.SetVersion(version)
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer stop()
 		return ctrl.Run(ctx)

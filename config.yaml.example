@@ -10,6 +10,11 @@ backups:
 # Set to false if your system uses a different SSH server (e.g. dropbear).
 validate: true
 
+# Check GitHub Releases periodically and log when a newer version is
+# available. Disabled by default.
+check_for_updates: false
+update_check_interval: 24h
+
 # Discover per-user configs in ~/.config/key-daemon/config.yaml.
 discover_user_configs: false
 
