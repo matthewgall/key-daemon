@@ -21,6 +21,7 @@ allowed_user_sources:
 users:
   - name: root
     sources:
-      - url:https://download.matthewgall.dev/ssh/keys
-      - github:matthewgall
-      - sshid:matthewgall
+      # Replace these with your own sources.
+      - url:https://example.com/keys
+      - github:yourusername
+      - sshid:yourusername
