@@ -13,6 +13,11 @@ build:
 static:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BINARY)-linux-amd64 ./cmd/key-daemon
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BINARY)-linux-arm64 ./cmd/key-daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=386 go build $(LDFLAGS) -o $(BINARY)-linux-386 ./cmd/key-daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm go build $(LDFLAGS) -o $(BINARY)-linux-arm ./cmd/key-daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=ppc64le go build $(LDFLAGS) -o $(BINARY)-linux-ppc64le ./cmd/key-daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build $(LDFLAGS) -o $(BINARY)-linux-s390x ./cmd/key-daemon
+	CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build $(LDFLAGS) -o $(BINARY)-linux-riscv64 ./cmd/key-daemon
 
 test:
 	go test ./...

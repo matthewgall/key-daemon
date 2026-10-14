@@ -19,6 +19,21 @@ case "$ARCH" in
   aarch64|arm64)
     BINARY="key-daemon-linux-arm64"
     ;;
+  i?86|x86)
+    BINARY="key-daemon-linux-386"
+    ;;
+  armv7l|armv6l|arm)
+    BINARY="key-daemon-linux-arm"
+    ;;
+  ppc64le)
+    BINARY="key-daemon-linux-ppc64le"
+    ;;
+  s390x)
+    BINARY="key-daemon-linux-s390x"
+    ;;
+  riscv64)
+    BINARY="key-daemon-linux-riscv64"
+    ;;
   *)
     die "unsupported architecture: $ARCH"
     ;;
