@@ -1,0 +1,19 @@
+# Binaries
+/key-daemon
+/key-daemon-linux-*
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

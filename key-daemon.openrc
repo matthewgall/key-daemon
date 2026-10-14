@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+
+name="key-daemon"
+description="SSH authorized_keys synchronizer"
+command="/usr/local/bin/key-daemon"
+command_args="run --config /etc/key-daemon/config.yaml"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/key-daemon.log"
+error_log="/var/log/key-daemon.log"
+start_stop_daemon_args="--background --make-pidfile --stdout \"${output_log}\" --stderr \"${error_log}\""
+
+depend() {
+	need net
+}
+
+start_pre() {
+	checkpath -f -m 0644 -o root:root /var/log/key-daemon.log
+}

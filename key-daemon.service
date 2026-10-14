@@ -1,0 +1,14 @@
+[Unit]
+Description=key-daemon SSH authorized_keys synchronizer
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/key-daemon run --config /etc/key-daemon/config.yaml
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
