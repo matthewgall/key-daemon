@@ -193,6 +193,21 @@ URL. To check manually from the command line:
 key-daemon version --check
 ```
 
+### Self-update
+
+From a root shell you can replace the running binary with the latest release
+and restart the service in one step:
+
+```bash
+sudo key-daemon self-update
+```
+
+This downloads the correct architecture binary, verifies its SHA-256 checksum,
+replaces `/usr/local/bin/key-daemon`, and runs `systemctl restart` or
+`rc-service restart` as appropriate.
+
+> Self-update is **never automatic**. It must be invoked explicitly.
+
 ## Building
 
 Requirements: Go 1.23+
