@@ -162,9 +162,24 @@ To manage multiple users, run `key-daemon` as root or via a systemd service:
 sudo key-daemon sync -config /etc/key-daemon/config.yaml
 ```
 
+### Restricting key algorithms
+
+Only accept specific key types:
+
+```yaml
+allowed_key_types:
+  - ssh-ed25519
+  - sk-ssh-ed25519@openssh.com
+```
+
+Supported values: `ssh-rsa`, `ssh-ed25519`, `ecdsa-sha2-nistp256`,
+`ecdsa-sha2-nistp384`, `ecdsa-sha2-nistp521`,
+`sk-ssh-ed25519@openssh.com`, and `sk-ecdsa-sha2-nistp256@openssh.com`.
+
 When running as root, files are written as root and immediately `chown`ed to the target user. `key-daemon` does not permanently drop privileges, but it only holds root privileges as necessary and applies the target ownership to every produced file.
 
-After editing the config, either reload the daemon or run a one-shot sync:
+After editing the config, key-daemon automatically reloads it when the file
+changes, or you can reload it manually:
 
 ```bash
 sudo systemctl kill -s HUP key-daemon
@@ -186,9 +201,46 @@ key-daemon run -config /etc/key-daemon/config.yaml -log-level info
 key-daemon sync -config /etc/key-daemon/config.yaml
 ```
 
+Preview changes without writing:
+
+```bash
+key-daemon sync -config /etc/key-daemon/config.yaml -dry-run
+```
+
+### Restore from backup
+
+Restore the most recent backup for a specific user:
+
+```bash
+sudo key-daemon restore alice
+```
+
+When not running as root, the current user is restored if no username is
+supplied.
+
 ### Logging
 
 Log levels are `debug`, `info`, `warn`, `error`. The daemon logs structured lines to stderr, which are captured by systemd/journald when run as a service.
+
+### Metrics
+
+key-daemon can expose a small Prometheus-style metrics endpoint. It is
+disabled by default and binds to localhost only:
+
+```yaml
+metrics:
+  enabled: true
+  address: 127.0.0.1:9123
+  path: /metrics
+```
+
+Available metrics:
+
+- `key_daemon_sync_count_total`
+- `key_daemon_last_sync_timestamp_seconds`
+- `key_daemon_last_sync_success`
+- `key_daemon_users`
+- `key_daemon_keys`
 
 ### Update checks
 

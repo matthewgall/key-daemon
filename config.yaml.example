@@ -10,10 +10,21 @@ backups:
 # Set to false if your system uses a different SSH server (e.g. dropbear).
 validate: true
 
+# Restrict accepted SSH key algorithms. Leave empty to accept all supported
+# types (ssh-rsa, ssh-ed25519, ecdsa-sha2-*).
+allowed_key_types: []
+
 # Check GitHub Releases periodically and log when a newer version is
 # available. Disabled by default.
 check_for_updates: false
 update_check_interval: 24h
+
+# Optional Prometheus-style metrics endpoint. Binds to localhost only by
+# default when enabled.
+metrics:
+  enabled: false
+  address: 127.0.0.1:9123
+  path: /metrics
 
 # Discover per-user configs in ~/.config/key-daemon/config.yaml.
 discover_user_configs: false

@@ -124,6 +124,25 @@ func ParseRequireOne(text string) ([]Key, error) {
 	return keys, nil
 }
 
+// FilterByType returns only keys whose algorithm is in allowedTypes.
+// An empty allowedTypes slice allows all supported key types.
+func FilterByType(keys []Key, allowedTypes []string) []Key {
+	if len(allowedTypes) == 0 {
+		return keys
+	}
+	allowed := make(map[string]struct{}, len(allowedTypes))
+	for _, t := range allowedTypes {
+		allowed[t] = struct{}{}
+	}
+	out := make([]Key, 0, len(keys))
+	for _, k := range keys {
+		if _, ok := allowed[k.Type]; ok {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // Deduplicate returns a slice of unique keys, preserving first-seen order.
 func Deduplicate(keys []Key) []Key {
 	seen := make(map[string]struct{}, len(keys))

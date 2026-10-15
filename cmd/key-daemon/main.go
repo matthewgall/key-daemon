@@ -25,6 +25,12 @@ func main() {
 	}
 }
 
+// parseCommon registers the flags shared by every subcommand.
+func parseCommon(fs *flag.FlagSet, cfgPath, logLevel *string) {
+	fs.StringVar(cfgPath, "config", config.DefaultConfigPath, "Path to configuration file")
+	fs.StringVar(logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+}
+
 func run(args []string) error {
 	// Determine subcommand. Default is "run" for backward compatibility with
 	// flag-only invocations like `key-daemon --config ...`.
@@ -36,10 +42,19 @@ func run(args []string) error {
 	}
 
 	var cfgPath, logLevel string
-	fs := flag.NewFlagSet("key-daemon", flag.ContinueOnError)
+	fs := flag.NewFlagSet("key-daemon"+" "+subcommand, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	fs.StringVar(&cfgPath, "config", config.DefaultConfigPath, "Path to configuration file")
-	fs.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	parseCommon(fs, &cfgPath, &logLevel)
+
+	var dryRun bool
+	var check bool
+
+	switch subcommand {
+	case "version":
+		fs.BoolVar(&check, "check", false, "Check GitHub Releases for a newer version")
+	case "sync":
+		fs.BoolVar(&dryRun, "dry-run", false, "Show what would change without writing to disk")
+	}
 
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
@@ -53,11 +68,6 @@ func run(args []string) error {
 
 	switch subcommand {
 	case "version":
-		var check bool
-		fs.BoolVar(&check, "check", false, "Check GitHub Releases for a newer version")
-		if err := fs.Parse(flagArgs); err != nil {
-			return err
-		}
 		if !check {
 			fmt.Println(version)
 			return nil
@@ -76,7 +86,20 @@ func run(args []string) error {
 	case "sync":
 		ctrl := controller.New(cfgPath, log)
 		ctrl.SetVersion(version)
+		ctrl.SetDryRun(dryRun)
 		return ctrl.Sync(context.Background())
+
+	case "restore":
+		username := ""
+		if len(fs.Args()) > 0 {
+			username = fs.Args()[0]
+		}
+		ctrl := controller.New(cfgPath, log)
+		if err := ctrl.Restore(context.Background(), username); err != nil {
+			return err
+		}
+		fmt.Printf("Restored authorized_keys for %s\n", username)
+		return nil
 
 	case "self-update":
 		updater, err := selfupdate.New()
@@ -102,6 +125,6 @@ func run(args []string) error {
 		return ctrl.Run(ctx)
 
 	default:
-		return fmt.Errorf("unknown subcommand %q (expected run, sync, version, or self-update)", subcommand)
+		return fmt.Errorf("unknown subcommand %q (expected run, sync, restore, version, or self-update)", subcommand)
 	}
 }

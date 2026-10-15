@@ -55,6 +55,40 @@ func TestParseLineIgnoresCommentsAndEmpty(t *testing.T) {
 	}
 }
 
+func TestFilterByType(t *testing.T) {
+	keys := parseKeys(t, []string{validEd25519, validRSA, validECDSA, validSkED25519})
+
+	filtered := FilterByType(keys, []string{"ssh-ed25519", "sk-ssh-ed25519@openssh.com"})
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 keys, got %d", len(filtered))
+	}
+	for _, k := range filtered {
+		if k.Type != "ssh-ed25519" && k.Type != "sk-ssh-ed25519@openssh.com" {
+			t.Errorf("unexpected key type %q", k.Type)
+		}
+	}
+
+	if got := FilterByType(keys, nil); len(got) != len(keys) {
+		t.Errorf("empty allowed types should allow all, got %d", len(got))
+	}
+}
+
+func parseKeys(t *testing.T, lines []string) []Key {
+	t.Helper()
+	out := make([]Key, 0, len(lines))
+	for _, line := range lines {
+		k, err := ParseLine(line)
+		if err != nil {
+			t.Fatalf("ParseLine(%q) error: %v", line, err)
+		}
+		if k == nil {
+			t.Fatalf("ParseLine(%q) returned nil", line)
+		}
+		out = append(out, *k)
+	}
+	return out
+}
+
 func TestParseLineInvalid(t *testing.T) {
 	lines := []string{
 		"not-a-key",
