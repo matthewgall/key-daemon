@@ -37,6 +37,54 @@ func newTestController(t *testing.T, path string, log *logger.Logger) *Controlle
 	return ctrl
 }
 
+func TestRestore(t *testing.T) {
+	log := logger.New(logger.ErrorLevel)
+	ctrl := newTestController(t, writeConfig(t, ""), log)
+	ctrl.resolver = resolverFunc(func(name string) (*user.Info, error) {
+		return &user.Info{Name: name, UID: 0, GID: 0, HomeDir: t.TempDir()}, nil
+	})
+	ctrl.manager = &mockManager{}
+
+	if err := ctrl.Restore(context.Background(), "testuser"); err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if !ctrl.manager.(*mockManager).restoreCalled {
+		t.Error("expected RestoreLatestBackup to be called")
+	}
+}
+
+func TestRestoreRequiresUsernameAsRoot(t *testing.T) {
+	log := logger.New(logger.ErrorLevel)
+	ctrl := New(writeConfig(t, ""), log)
+	ctrl.isRootFn = func() bool { return true }
+
+	err := ctrl.Restore(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected error when username is empty as root")
+	}
+	if !strings.Contains(err.Error(), "username is required") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRestoreDefaultsToCurrentUserWhenNotRoot(t *testing.T) {
+	log := logger.New(logger.ErrorLevel)
+	ctrl := New(writeConfig(t, ""), log)
+	ctrl.isRootFn = func() bool { return false }
+	ctrl.currentUserFn = func() (string, error) { return "testuser", nil }
+	ctrl.resolver = resolverFunc(func(name string) (*user.Info, error) {
+		return &user.Info{Name: name, UID: 0, GID: 0, HomeDir: t.TempDir()}, nil
+	})
+	ctrl.manager = &mockManager{}
+
+	if err := ctrl.Restore(context.Background(), ""); err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if !ctrl.manager.(*mockManager).restoreCalled {
+		t.Error("expected RestoreLatestBackup to be called")
+	}
+}
+
 func TestSyncHappyPath(t *testing.T) {
 	path := writeConfig(t, `
 users:
@@ -402,15 +450,25 @@ func (m *mockProvider) FetchAll(ctx context.Context, sources []config.Source) (s
 
 // mockManager is a test double for keyManager.
 type mockManager struct {
-	syncCalled bool
-	syncCount  int
-	err        error
+	syncCalled    bool
+	syncCount     int
+	restoreCalled bool
+	err           error
 }
 
 func (m *mockManager) Sync(u *user.Info, managedKeys string, validate authkeys.ValidateFunc) (bool, error) {
 	m.syncCalled = true
 	m.syncCount++
 	return true, m.err
+}
+
+func (m *mockManager) Preview(u *user.Info, managedKeys string, validate authkeys.ValidateFunc) (string, bool, error) {
+	return managedKeys, true, m.err
+}
+
+func (m *mockManager) RestoreLatestBackup(u *user.Info) error {
+	m.restoreCalled = true
+	return m.err
 }
 
 // mockDiscoverer is a test double for userDiscoverer.

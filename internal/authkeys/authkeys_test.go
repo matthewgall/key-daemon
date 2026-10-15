@@ -30,6 +30,43 @@ func tempAuthPaths(t *testing.T, u *user.Info) (sshDir, authPath string) {
 	return filepath.Join(home, ".ssh"), filepath.Join(home, ".ssh", "authorized_keys")
 }
 
+func TestPreview(t *testing.T) {
+	u := currentUser(t)
+	sshDir, authPath := tempAuthPaths(t, u)
+
+	m := NewManager(config.Markers{Begin: "# BEGIN", End: "# END"}, config.Backups{MaxCount: 5, MaxAge: config.Duration(time.Hour)})
+
+	candidate, wouldUpdate, err := m.Preview(u, "ssh-ed25519 AAAA test@example.com", nil)
+	if err != nil {
+		t.Fatalf("Preview failed: %v", err)
+	}
+	if !wouldUpdate {
+		t.Error("expected wouldUpdate=true")
+	}
+	if !strings.Contains(candidate, "ssh-ed25519 AAAA") {
+		t.Errorf("candidate missing key: %s", candidate)
+	}
+
+	if _, err := os.Stat(authPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("authorized_keys should not exist in dry-run, got: %v", err)
+	}
+	if _, err := os.Stat(sshDir); errors.Is(err, os.ErrNotExist) {
+		t.Error(".ssh dir should have been created")
+	}
+
+	// Now actually write the file and re-preview.
+	if _, err := m.Sync(u, "ssh-ed25519 AAAA test@example.com", nil); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+	_, wouldUpdate, err = m.Preview(u, "ssh-ed25519 AAAA test@example.com", nil)
+	if err != nil {
+		t.Fatalf("Preview failed: %v", err)
+	}
+	if wouldUpdate {
+		t.Error("expected wouldUpdate=false after already synced")
+	}
+}
+
 func TestSyncCreatesFileAndSSHDir(t *testing.T) {
 	u := currentUser(t)
 	sshDir, authPath := tempAuthPaths(t, u)

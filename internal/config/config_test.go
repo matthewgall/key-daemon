@@ -130,7 +130,7 @@ users:
 users:
   - name: root
     sources:
-      - gitlab:matthewgall
+      - bitbucket:matthewgall
 `,
 			wantErr: "unsupported type",
 		},
@@ -456,6 +456,63 @@ func TestEffectiveSources(t *testing.T) {
 	}
 }
 
+func TestAllowedKeyTypesValidation(t *testing.T) {
+	base := `
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`
+	cases := []struct {
+		name    string
+		extra   string
+		wantErr string
+	}{
+		{
+			name: "valid key type",
+			extra: `allowed_key_types:
+  - ssh-ed25519
+`,
+		},
+		{
+			name: "unsupported key type",
+			extra: `allowed_key_types:
+  - ssh-dss
+`,
+			wantErr: "unsupported key type",
+		},
+		{
+			name: "duplicate key type",
+			extra: `allowed_key_types:
+  - ssh-ed25519
+  - ssh-ed25519
+`,
+			wantErr: "duplicate",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(base+tt.extra), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			_, err := Load(path)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestAllowedUserSourcesValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -479,7 +536,7 @@ users:
 			content: `
 discover_user_configs: true
 allowed_user_sources:
-  - gitlab
+  - bitbucket
 users:
   - name: root
     sources:

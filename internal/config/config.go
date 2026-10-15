@@ -113,6 +113,13 @@ type Backups struct {
 	MaxAge   Duration `yaml:"max_age"`
 }
 
+// Metrics holds the optional HTTP metrics endpoint configuration.
+type Metrics struct {
+	Enabled bool   `yaml:"enabled"`
+	Address string `yaml:"address"`
+	Path    string `yaml:"path"`
+}
+
 // Markers holds the authorized_keys section delimiters.
 type Markers struct {
 	Begin string `yaml:"begin"`
@@ -138,6 +145,8 @@ type Config struct {
 	RunValidation       bool     `yaml:"validate"`
 	CheckForUpdates     bool     `yaml:"check_for_updates"`
 	UpdateCheckInterval Duration `yaml:"update_check_interval"`
+	AllowedKeyTypes     []string `yaml:"allowed_key_types"`
+	Metrics             Metrics  `yaml:"metrics"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -177,9 +186,14 @@ func Default() *Config {
 			"/usr/sbin/nologin",
 			"/usr/bin/nologin",
 		},
-		RunValidation:   true,
-		CheckForUpdates: false,
+		RunValidation:       true,
+		CheckForUpdates:     false,
 		UpdateCheckInterval: Duration(DefaultUpdateCheckInterval),
+		Metrics: Metrics{
+			Enabled: false,
+			Address: "127.0.0.1:9123",
+			Path:    "/metrics",
+		},
 	}
 }
 
@@ -210,6 +224,32 @@ func (c *Config) Validate() error {
 	for i, src := range c.DefaultSources {
 		if err := validateSource(src, fmt.Sprintf("default_sources[%d]", i)); err != nil {
 			return err
+		}
+	}
+
+	seenKeyTypes := make(map[string]struct{})
+	for i, kt := range c.AllowedKeyTypes {
+		if kt == "" {
+			return fmt.Errorf("allowed_key_types[%d] is empty", i)
+		}
+		if !AllowedKeyType(kt) {
+			return fmt.Errorf("allowed_key_types[%d] has unsupported key type %q", i, kt)
+		}
+		if _, ok := seenKeyTypes[kt]; ok {
+			return fmt.Errorf("allowed_key_types contains duplicate %q", kt)
+		}
+		seenKeyTypes[kt] = struct{}{}
+	}
+
+	if c.Metrics.Enabled {
+		if c.Metrics.Address == "" {
+			return errors.New("metrics.address is required when metrics.enabled is true")
+		}
+		if c.Metrics.Path == "" {
+			return errors.New("metrics.path is required when metrics.enabled is true")
+		}
+		if !strings.HasPrefix(c.Metrics.Path, "/") {
+			return errors.New("metrics.path must start with /")
 		}
 	}
 
@@ -250,7 +290,7 @@ func (c *Config) Validate() error {
 
 func isAllowedUserSourceType(t string) bool {
 	switch t {
-	case "url", "github", "sshid":
+	case "url", "github", "gitlab", "codeberg", "sourcehut", "launchpad", "sshid":
 		return true
 	}
 	return false
@@ -258,7 +298,7 @@ func isAllowedUserSourceType(t string) bool {
 
 func validateSource(src Source, path string) error {
 	switch src.Type {
-	case "url", "github", "sshid":
+	case "url", "github", "gitlab", "codeberg", "sourcehut", "launchpad", "sshid":
 		if src.Value == "" {
 			return fmt.Errorf("%s value is required", path)
 		}
@@ -269,6 +309,17 @@ func validateSource(src Source, path string) error {
 		return fmt.Errorf("%s url must use https://", path)
 	}
 	return nil
+}
+
+// AllowedKeyType reports whether t is a supported SSH public key algorithm.
+func AllowedKeyType(t string) bool {
+	switch t {
+	case "ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+		"ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com",
+		"sk-ecdsa-sha2-nistp256@openssh.com":
+		return true
+	}
+	return false
 }
 
 // EffectiveSources returns the sources that apply to a user, falling back to defaults.

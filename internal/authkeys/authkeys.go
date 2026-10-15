@@ -40,6 +40,44 @@ func NewManager(markers config.Markers, backups config.Backups) *Manager {
 	}
 }
 
+// Preview builds the candidate authorized_keys content for the user without
+// promoting it to the live file. It returns true if the candidate differs
+// from the existing file. A temporary candidate file is written and, if
+// validate is non-nil, checked with sshd -t.
+func (m *Manager) Preview(u *user.Info, managedKeys string, validate ValidateFunc) (string, bool, error) {
+	sshDir, authPath, err := m.paths(u)
+	if err != nil {
+		return "", false, err
+	}
+
+	if err := m.ensureSSHDir(sshDir, u); err != nil {
+		return "", false, fmt.Errorf("ensure .ssh dir: %w", err)
+	}
+
+	candidate, err := m.buildCandidate(authPath, managedKeys)
+	if err != nil {
+		return "", false, fmt.Errorf("build candidate: %w", err)
+	}
+
+	if validate != nil {
+		candidatePath := filepath.Join(sshDir, fmt.Sprintf(tmpFilePattern, os.Getpid()))
+		defer os.Remove(candidatePath)
+		if err := m.writeFile(candidatePath, []byte(candidate), u); err != nil {
+			return "", false, fmt.Errorf("write candidate: %w", err)
+		}
+		if err := validate(candidatePath); err != nil {
+			return "", false, fmt.Errorf("validation failed: %w", err)
+		}
+	}
+
+	existing, err := os.ReadFile(authPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", false, fmt.Errorf("read existing authkeys: %w", err)
+	}
+
+	return candidate, string(existing) != candidate, nil
+}
+
 // Sync ensures the user's authorized_keys contains the supplied managed keys
 // in the marked section. It returns true if the file was changed.
 func (m *Manager) Sync(u *user.Info, managedKeys string, validate ValidateFunc) (bool, error) {
