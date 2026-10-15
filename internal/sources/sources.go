@@ -31,6 +31,8 @@ func Resolve(src config.Source) (string, error) {
 		return fmt.Sprintf("https://github.com/%s.keys", src.Value), nil
 	case "sshid":
 		return fmt.Sprintf("https://sshid.io/%s", src.Value), nil
+	case "gitlab":
+		return fmt.Sprintf("https://gitlab.com/%s.keys", src.Value), nil
 	default:
 		return "", fmt.Errorf("unsupported source type %q", src.Type)
 	}

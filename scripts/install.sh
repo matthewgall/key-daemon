@@ -227,6 +227,7 @@ users:
     # Add your own sources below, for example:
     #   - url:https://example.com/keys
     #   - github:yourusername
+    #   - gitlab:yourusername
     #   - sshid:yourusername
 EOF
     chmod 0644 "${CONFIG_DIR}/config.yaml"

@@ -21,6 +21,7 @@ discover_user_configs: false
 # Source types permitted in per-user configs.
 allowed_user_sources:
   - github
+  - gitlab
   - sshid
 
 users:
@@ -29,4 +30,5 @@ users:
       # Replace these with your own sources.
       - url:https://example.com/keys
       - github:yourusername
+      - gitlab:yourusername
       - sshid:yourusername

@@ -19,6 +19,7 @@ func TestResolve(t *testing.T) {
 	}{
 		{config.Source{Type: "url", Value: "https://example.com/keys"}, "https://example.com/keys"},
 		{config.Source{Type: "github", Value: "matthewgall"}, "https://github.com/matthewgall.keys"},
+		{config.Source{Type: "gitlab", Value: "matthewgall"}, "https://gitlab.com/matthewgall.keys"},
 		{config.Source{Type: "sshid", Value: "matthewgall"}, "https://sshid.io/matthewgall"},
 	}
 
@@ -42,7 +43,7 @@ func TestResolveRejectsNonHTTPSURL(t *testing.T) {
 }
 
 func TestResolveUnsupportedType(t *testing.T) {
-	_, err := Resolve(config.Source{Type: "gitlab", Value: "matthewgall"})
+	_, err := Resolve(config.Source{Type: "bitbucket", Value: "matthewgall"})
 	if err == nil || !strings.Contains(err.Error(), "unsupported source type") {
 		t.Errorf("expected unsupported type error, got: %v", err)
 	}

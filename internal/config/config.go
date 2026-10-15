@@ -171,7 +171,7 @@ func Default() *Config {
 			MaxCount: DefaultMaxBackups,
 			MaxAge:   Duration(DefaultMaxBackupAge),
 		},
-		AllowedUserSources: []string{"github", "sshid"},
+		AllowedUserSources: []string{"github", "gitlab", "sshid"},
 		DiscoverSkipShells: []string{
 			"/bin/false",
 			"/usr/sbin/nologin",
