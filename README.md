@@ -98,6 +98,7 @@ discover_user_configs: false
 # Per-user configs may only use these source types.
 allowed_user_sources:
   - github
+  - gitlab
   - sshid
 
 users:
@@ -105,11 +106,13 @@ users:
     sources:
       - url:https://example.com/keys
       - github:yourusername
+      - gitlab:yourusername
       - sshid:yourusername
 
   - name: alice
     sources:
       - github:alice
+      - gitlab:alice
 ```
 
 ### Per-user config
@@ -119,6 +122,7 @@ Users can place their own config in `~/.config/key-daemon/config.yaml`. Root sti
 ```yaml
 sources:
   - github:yourusername
+  - gitlab:yourusername
   - sshid:yourusername
 ```
 
