@@ -6,7 +6,7 @@ A small, statically-linked daemon that keeps your servers' `authorized_keys` fil
 
 - **Static Go binary** — no runtime dependencies.
 - **Config-driven** — define users, sources, and sync intervals in YAML.
-- **Multiple source types** — raw HTTPS URLs, GitHub usernames (`github:yourusername`), and sshid.io handles (`sshid:yourusername`).
+- **Multiple source types** — raw HTTPS URLs, and shorthand handles for GitHub (`github:`), GitLab (`gitlab:`), Codeberg (`codeberg:`), SourceHut (`sourcehut:`), Launchpad (`launchpad:`), and sshid.io (`sshid:`).
 - **Safe updates** — only rewrites a marked section inside `~/.ssh/authorized_keys`, leaving manually added keys untouched.
 - **Pre-commit validation** — every candidate file is checked with `sshd -t` before it goes live.
 - **Automated backups** — previous `authorized_keys` files are backed up and pruned by count and age.
@@ -99,6 +99,9 @@ discover_user_configs: false
 allowed_user_sources:
   - github
   - gitlab
+  - codeberg
+  - sourcehut
+  - launchpad
   - sshid
 
 users:
@@ -107,12 +110,16 @@ users:
       - url:https://example.com/keys
       - github:yourusername
       - gitlab:yourusername
+      - codeberg:yourusername
+      - sourcehut:yourusername
+      - launchpad:yourusername
       - sshid:yourusername
 
   - name: alice
     sources:
       - github:alice
       - gitlab:alice
+      - codeberg:alice
 ```
 
 ### Per-user config
@@ -123,6 +130,9 @@ Users can place their own config in `~/.config/key-daemon/config.yaml`. Root sti
 sources:
   - github:yourusername
   - gitlab:yourusername
+  - codeberg:yourusername
+  - sourcehut:yourusername
+  - launchpad:yourusername
   - sshid:yourusername
 ```
 

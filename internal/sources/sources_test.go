@@ -20,6 +20,9 @@ func TestResolve(t *testing.T) {
 		{config.Source{Type: "url", Value: "https://example.com/keys"}, "https://example.com/keys"},
 		{config.Source{Type: "github", Value: "matthewgall"}, "https://github.com/matthewgall.keys"},
 		{config.Source{Type: "gitlab", Value: "matthewgall"}, "https://gitlab.com/matthewgall.keys"},
+		{config.Source{Type: "codeberg", Value: "matthewgall"}, "https://codeberg.org/matthewgall.keys"},
+		{config.Source{Type: "sourcehut", Value: "matthewgall"}, "https://meta.sr.ht/~matthewgall/keys"},
+		{config.Source{Type: "launchpad", Value: "matthewgall"}, "https://launchpad.net/~matthewgall/+sshkeys"},
 		{config.Source{Type: "sshid", Value: "matthewgall"}, "https://sshid.io/matthewgall"},
 	}
 

@@ -228,6 +228,9 @@ users:
     #   - url:https://example.com/keys
     #   - github:yourusername
     #   - gitlab:yourusername
+    #   - codeberg:yourusername
+    #   - sourcehut:yourusername
+    #   - launchpad:yourusername
     #   - sshid:yourusername
 EOF
     chmod 0644 "${CONFIG_DIR}/config.yaml"
