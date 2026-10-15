@@ -33,6 +33,12 @@ func Resolve(src config.Source) (string, error) {
 		return fmt.Sprintf("https://sshid.io/%s", src.Value), nil
 	case "gitlab":
 		return fmt.Sprintf("https://gitlab.com/%s.keys", src.Value), nil
+	case "codeberg":
+		return fmt.Sprintf("https://codeberg.org/%s.keys", src.Value), nil
+	case "sourcehut":
+		return fmt.Sprintf("https://meta.sr.ht/~%s/keys", src.Value), nil
+	case "launchpad":
+		return fmt.Sprintf("https://launchpad.net/~%s/+sshkeys", src.Value), nil
 	default:
 		return "", fmt.Errorf("unsupported source type %q", src.Type)
 	}
