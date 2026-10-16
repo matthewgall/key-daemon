@@ -102,7 +102,7 @@ type Controller struct {
 // is used to identify the running binary in User-Agent headers and update
 // checks.
 func New(configPath string, log *logger.Logger, version string) *Controller {
-	fetcher := fetch.NewClient(version)
+	fetcher := fetch.NewClient(userAgent(version))
 	return &Controller{
 		configPath:    configPath,
 		log:           log,
@@ -116,6 +116,20 @@ func New(configPath string, log *logger.Logger, version string) *Controller {
 		currentUserFn: osuserCurrent,
 		isRootFn:      isRoot,
 	}
+}
+
+// userAgent returns a User-Agent fragment for the given version.
+// A bare version like "v1.5.2" is prefixed with "key-daemon/".
+// Existing prefixes or unknown/development versions are returned unchanged.
+func userAgent(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || version == "dev" {
+		return "key-daemon"
+	}
+	if strings.HasPrefix(version, "key-daemon/") {
+		return version
+	}
+	return "key-daemon/" + version
 }
 
 // SetVersion sets the running daemon version. Used for update checks.

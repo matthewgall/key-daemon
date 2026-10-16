@@ -30,6 +30,7 @@ type Updater struct {
 	installPath string
 	checker     updateChecker
 	httpClient  *http.Client
+	userAgent   string
 }
 
 type updateChecker interface {
@@ -56,6 +57,11 @@ func New() (*Updater, error) {
 // InstallPath returns the path to the binary being replaced.
 func (u *Updater) InstallPath() string {
 	return u.installPath
+}
+
+// SetUserAgent sets the User-Agent header used for HTTP requests.
+func (u *Updater) SetUserAgent(ua string) {
+	u.userAgent = ua
 }
 
 // Run downloads the latest release binary, verifies its checksum, and
@@ -153,6 +159,9 @@ func (u *Updater) downloadFile(ctx context.Context, url, dest string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
+	}
+	if u.userAgent != "" {
+		req.Header.Set("User-Agent", u.userAgent)
 	}
 	resp, err := u.httpClient.Do(req)
 	if err != nil {
