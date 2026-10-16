@@ -34,7 +34,11 @@ func (c *Client) Client() *http.Client {
 	return c.httpClient
 }
 
-func NewClient() *Client {
+func NewClient(userAgent ...string) *Client {
+	ua := "key-daemon"
+	if len(userAgent) > 0 && userAgent[0] != "" {
+		ua = userAgent[0]
+	}
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
@@ -44,7 +48,7 @@ func NewClient() *Client {
 		},
 		retries:   defaultRetries,
 		retryGap:  defaultRetryGap,
-		userAgent: "key-daemon/1.0",
+		userAgent: ua,
 	}
 }
 

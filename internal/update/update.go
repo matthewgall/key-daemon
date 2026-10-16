@@ -29,14 +29,19 @@ type Checker struct {
 	userAgent  string
 }
 
-// NewChecker creates a Checker with sensible defaults.
-func NewChecker() *Checker {
+// NewChecker creates a Checker with sensible defaults. The optional version is
+// used in the User-Agent header.
+func NewChecker(version ...string) *Checker {
+	ua := "key-daemon"
+	if len(version) > 0 && version[0] != "" {
+		ua = fmt.Sprintf("key-daemon/%s (update-check)", version[0])
+	}
 	return &Checker{
 		apiURL: githubAPIURL,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
-		userAgent: "key-daemon/update-check",
+		userAgent: ua,
 	}
 }
 
