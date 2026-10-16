@@ -111,8 +111,7 @@ func run(args []string) error {
 		return nil
 
 	case "sync":
-		ctrl := controller.New(cfgPath, log)
-		ctrl.SetVersion(version)
+		ctrl := controller.New(cfgPath, log, version)
 		ctrl.SetDryRun(dryRun)
 		return ctrl.Sync(context.Background())
 
@@ -121,7 +120,7 @@ func run(args []string) error {
 		if len(fs.Args()) > 0 {
 			username = fs.Args()[0]
 		}
-		ctrl := controller.New(cfgPath, log)
+		ctrl := controller.New(cfgPath, log, version)
 		if err := ctrl.Restore(context.Background(), username); err != nil {
 			return err
 		}
@@ -145,8 +144,7 @@ func run(args []string) error {
 		return nil
 
 	case "run":
-		ctrl := controller.New(cfgPath, log)
-		ctrl.SetVersion(version)
+		ctrl := controller.New(cfgPath, log, version)
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer stop()
 		return ctrl.Run(ctx)

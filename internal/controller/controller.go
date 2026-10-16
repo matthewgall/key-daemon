@@ -98,9 +98,11 @@ type Controller struct {
 	metricsKeys      int
 }
 
-// New creates a Controller using production dependencies.
-func New(configPath string, log *logger.Logger) *Controller {
-	fetcher := fetch.NewClient()
+// New creates a Controller using production dependencies. The version string
+// is used to identify the running binary in User-Agent headers and update
+// checks.
+func New(configPath string, log *logger.Logger, version string) *Controller {
+	fetcher := fetch.NewClient(version)
 	return &Controller{
 		configPath:    configPath,
 		log:           log,
@@ -109,7 +111,8 @@ func New(configPath string, log *logger.Logger) *Controller {
 		manager:       nil, // created per-config inside sync
 		validator:     sshd.NewValidator().Validate,
 		discoverer:    nil, // set after config is loaded
-		checker:       update.NewChecker(),
+		checker:       update.NewChecker(version),
+		version:       version,
 		currentUserFn: osuserCurrent,
 		isRootFn:      isRoot,
 	}

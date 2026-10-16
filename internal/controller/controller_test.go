@@ -31,7 +31,7 @@ func writeConfig(t *testing.T, content string) string {
 // This avoids single-user filtering so tests can manage arbitrary users.
 func newTestController(t *testing.T, path string, log *logger.Logger) *Controller {
 	t.Helper()
-	ctrl := New(path, log)
+	ctrl := New(path, log, "test")
 	ctrl.isRootFn = func() bool { return true }
 	ctrl.currentUserFn = func() (string, error) { return "testuser", nil }
 	return ctrl
@@ -55,7 +55,7 @@ func TestRestore(t *testing.T) {
 
 func TestRestoreRequiresUsernameAsRoot(t *testing.T) {
 	log := logger.New(logger.ErrorLevel)
-	ctrl := New(writeConfig(t, ""), log)
+	ctrl := New(writeConfig(t, ""), log, "test")
 	ctrl.isRootFn = func() bool { return true }
 
 	err := ctrl.Restore(context.Background(), "")
@@ -69,7 +69,7 @@ func TestRestoreRequiresUsernameAsRoot(t *testing.T) {
 
 func TestRestoreDefaultsToCurrentUserWhenNotRoot(t *testing.T) {
 	log := logger.New(logger.ErrorLevel)
-	ctrl := New(writeConfig(t, ""), log)
+	ctrl := New(writeConfig(t, ""), log, "test")
 	ctrl.isRootFn = func() bool { return false }
 	ctrl.currentUserFn = func() (string, error) { return "testuser", nil }
 	ctrl.resolver = resolverFunc(func(name string) (*user.Info, error) {
@@ -332,7 +332,7 @@ users:
 `)
 
 	log := logger.New(logger.DebugLevel)
-	ctrl := New(path, log)
+	ctrl := New(path, log, "test")
 	ctrl.isRootFn = func() bool { return false }
 	ctrl.currentUserFn = func() (string, error) { return "coder", nil }
 	ctrl.resolver = resolverFunc(func(name string) (*user.Info, error) {
@@ -355,7 +355,7 @@ func TestSyncSingleUserModeMissingGlobalConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.yaml")
 
 	log := logger.New(logger.DebugLevel)
-	ctrl := New(path, log)
+	ctrl := New(path, log, "test")
 	ctrl.isRootFn = func() bool { return false }
 	ctrl.currentUserFn = func() (string, error) { return "coder", nil }
 	ctrl.resolver = resolverFunc(func(name string) (*user.Info, error) {
