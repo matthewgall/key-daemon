@@ -132,6 +132,7 @@ func run(args []string) error {
 		if err != nil {
 			return fmt.Errorf("initialise self-update: %w", err)
 		}
+		updater.SetUserAgent(fmt.Sprintf("key-daemon/%s (self-update)", version))
 		newVersion, err := updater.Run(context.Background(), version)
 		if err != nil {
 			return err
