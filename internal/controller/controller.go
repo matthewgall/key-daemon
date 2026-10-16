@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -96,6 +97,10 @@ type Controller struct {
 	metricsLastOK    bool
 	metricsUsers     int
 	metricsKeys      int
+
+	// Remote config state.
+	remoteClient  *http.Client
+	remoteLastReq time.Time
 }
 
 // New creates a Controller using production dependencies. The version string
@@ -162,7 +167,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		defer signal.Stop(sigCh)
 	}
 
-	if _, err := c.loadConfig(); err != nil {
+	if _, err := c.loadConfig(ctx); err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
@@ -170,7 +175,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		c.log.Error("initial sync completed with errors", map[string]string{"error": err.Error()})
 	}
 
-	cfg, _ := c.loadConfig()
+	cfg, _ := c.loadConfig(ctx)
 	if cfg != nil {
 		c.maybeCheckForUpdates(ctx, cfg)
 	}
@@ -368,7 +373,7 @@ func (c *Controller) runLoop(ctx context.Context, sigCh chan os.Signal, watchCh 
 		case <-timer.C:
 			if err := c.Sync(ctx); err != nil {
 				c.log.Error("sync cycle completed with errors", map[string]string{"error": err.Error()})
-			} else if cfg, err := c.loadConfig(); err == nil {
+			} else if cfg, err := c.loadConfig(ctx); err == nil {
 				c.maybeCheckForUpdates(ctx, cfg)
 			}
 		}
@@ -411,7 +416,7 @@ func (c *Controller) maybeCheckForUpdates(ctx context.Context, cfg *config.Confi
 // reloadConfigAndSync loads the latest config and runs a sync cycle.
 func (c *Controller) reloadConfigAndSync(ctx context.Context, reason string) {
 	c.log.Info("reloading config", map[string]string{"reason": reason})
-	if _, err := c.loadConfig(); err != nil {
+	if _, err := c.loadConfig(ctx); err != nil {
 		c.log.Error("failed to reload config", map[string]string{"error": err.Error()})
 		return
 	}
@@ -422,7 +427,7 @@ func (c *Controller) reloadConfigAndSync(ctx context.Context, reason string) {
 
 // Sync performs a single synchronization cycle against the current config.
 func (c *Controller) Sync(ctx context.Context) error {
-	cfg, err := c.loadConfig()
+	cfg, err := c.loadConfig(ctx)
 	if err != nil {
 		return err
 	}
@@ -658,7 +663,11 @@ func (c *Controller) Restore(ctx context.Context, username string) error {
 	return nil
 }
 
-func (c *Controller) loadConfig() (*config.Config, error) {
+func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
+	if err := c.maybeFetchRemoteConfig(ctx); err != nil {
+		c.log.Warn("remote config fetch failed, using local config", map[string]string{"error": err.Error()})
+	}
+
 	cfg, err := config.Load(c.configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) && !c.isRootFn() {
@@ -674,6 +683,90 @@ func (c *Controller) loadConfig() (*config.Config, error) {
 	}
 	c.interval = cfg.Interval.Duration()
 	return cfg, nil
+}
+
+// maybeFetchRemoteConfig pulls the latest configuration from a configured
+// remote URL and writes it to disk if it has changed. Failures are returned
+// so callers can fall back to the local config.
+func (c *Controller) maybeFetchRemoteConfig(ctx context.Context) error {
+	cfg, err := config.Load(c.configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read local config: %w", err)
+	}
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		cfg = config.Default()
+	}
+	if cfg.RemoteConfig.URL == "" {
+		return nil
+	}
+	if time.Since(c.remoteLastReq) < cfg.RemoteConfig.Interval.Duration() {
+		return nil
+	}
+
+	data, err := c.fetchRemoteConfig(ctx, cfg.RemoteConfig)
+	if err != nil {
+		return err
+	}
+	c.remoteLastReq = time.Now()
+
+	// Validate the remote payload before persisting it.
+	if _, err := config.LoadBytes(data); err != nil {
+		return fmt.Errorf("remote config failed validation: %w", err)
+	}
+
+	existing, err := os.ReadFile(c.configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read existing config: %w", err)
+	}
+	if string(existing) == string(data) {
+		return nil
+	}
+
+	if err := os.WriteFile(c.configPath, data, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	c.log.Info("updated config from remote source", map[string]string{
+		"url": cfg.RemoteConfig.URL,
+	})
+	return nil
+}
+
+func (c *Controller) fetchRemoteConfig(ctx context.Context, rc config.RemoteConfig) ([]byte, error) {
+	if c.remoteClient == nil {
+		c.remoteClient = &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 10 * time.Second,
+			},
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rc.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent(c.version))
+	if token := os.ExpandEnv(rc.Token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.remoteClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("remote config returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 5*1024*1024 {
+		return nil, fmt.Errorf("remote config exceeds 5 MiB")
+	}
+	return data, nil
 }
 
 func (c *Controller) currentInterval() time.Duration {

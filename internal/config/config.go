@@ -120,6 +120,13 @@ type Metrics struct {
 	Path    string `yaml:"path"`
 }
 
+// RemoteConfig describes a remote source of truth for the configuration file.
+type RemoteConfig struct {
+	URL      string   `yaml:"url"`
+	Token    string   `yaml:"token"`
+	Interval Duration `yaml:"interval"`
+}
+
 // Markers holds the authorized_keys section delimiters.
 type Markers struct {
 	Begin string `yaml:"begin"`
@@ -145,8 +152,9 @@ type Config struct {
 	RunValidation       bool     `yaml:"validate"`
 	CheckForUpdates     bool     `yaml:"check_for_updates"`
 	UpdateCheckInterval Duration `yaml:"update_check_interval"`
-	AllowedKeyTypes     []string `yaml:"allowed_key_types"`
-	Metrics             Metrics  `yaml:"metrics"`
+	AllowedKeyTypes     []string     `yaml:"allowed_key_types"`
+	Metrics             Metrics      `yaml:"metrics"`
+	RemoteConfig        RemoteConfig `yaml:"remote_config"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -155,7 +163,11 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	return LoadBytes(data)
+}
 
+// LoadBytes parses and validates YAML config data.
+func LoadBytes(data []byte) (*Config, error) {
 	cfg := Default()
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
@@ -193,6 +205,9 @@ func Default() *Config {
 			Enabled: false,
 			Address: "127.0.0.1:9123",
 			Path:    "/metrics",
+		},
+		RemoteConfig: RemoteConfig{
+			Interval: Duration(DefaultInterval),
 		},
 	}
 }
@@ -250,6 +265,15 @@ func (c *Config) Validate() error {
 		}
 		if !strings.HasPrefix(c.Metrics.Path, "/") {
 			return errors.New("metrics.path must start with /")
+		}
+	}
+
+	if c.RemoteConfig.URL != "" {
+		if !strings.HasPrefix(c.RemoteConfig.URL, "https://") {
+			return errors.New("remote_config.url must use https://")
+		}
+		if c.RemoteConfig.Interval.Duration() < MinInterval {
+			return fmt.Errorf("remote_config.interval must be at least %s", MinInterval)
 		}
 	}
 

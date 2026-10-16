@@ -242,6 +242,23 @@ Available metrics:
 - `key_daemon_users`
 - `key_daemon_keys`
 
+### Remote configuration
+
+If you run many nodes, you can point them at a central HTTPS endpoint that
+serves the same `config.yaml`. Each node fetches it on its configured interval,
+validates it, and overwrites its local file before reloading.
+
+```yaml
+remote_config:
+  url: https://key-daemon.example.com/config.yaml
+  token: "your-secret-token"    # optional, sent as Bearer token
+  interval: 5m
+```
+
+The remote URL must use HTTPS and the downloaded config is validated before it
+replaces the local file. If the remote endpoint is unreachable or returns an
+invalid config, the node keeps running from the last known local config.
+
 ### Update checks
 
 To be notified when a new release is available, enable GitHub Releases checks
