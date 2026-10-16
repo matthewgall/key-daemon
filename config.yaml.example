@@ -26,6 +26,13 @@ metrics:
   address: 127.0.0.1:9123
   path: /metrics
 
+# Optional remote configuration source. The daemon will periodically fetch this
+# URL and overwrite the local config file. HTTPS only. Leave empty to disable.
+remote_config:
+  url: ""
+  # token: "${KEY_DAEMON_REMOTE_TOKEN}"
+  interval: 5m
+
 # Discover per-user configs in ~/.config/key-daemon/config.yaml.
 discover_user_configs: false
 

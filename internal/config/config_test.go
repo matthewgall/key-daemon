@@ -145,6 +145,31 @@ users:
 			wantErr: "must use https://",
 		},
 		{
+			name: "non-https remote config",
+			content: `
+remote_config:
+  url: http://example.com/config.yaml
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "remote_config.url must use https://",
+		},
+		{
+			name: "remote config interval too short",
+			content: `
+remote_config:
+  url: https://example.com/config.yaml
+  interval: 30s
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "remote_config.interval must be at least",
+		},
+		{
 			name: "empty markers",
 			content: `
 markers:
