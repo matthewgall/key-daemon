@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	repo     = "matthewgall/key-daemon"
-	baseURL  = "https://github.com/matthewgall/key-daemon/releases/download"
-	maxSize  = 20 * 1024 * 1024 // 20 MiB
+	repo    = "matthewgall/key-daemon"
+	baseURL = "https://github.com/matthewgall/key-daemon/releases/download"
+	maxSize = 20 * 1024 * 1024 // 20 MiB
 )
 
 // Updater replaces the installed binary with a newer release.
@@ -98,21 +98,55 @@ func (u *Updater) Run(ctx context.Context, current string) (string, error) {
 		return "", fmt.Errorf("checksum verification failed: %w", err)
 	}
 
-	if err := os.Chmod(binaryPath, 0o755); err != nil {
-		return "", err
-	}
-
-	// Atomic replace. Remove then rename avoids "text file busy" when the
-	// old binary is currently executing; the running inode stays valid until
-	// the process exits.
-	if err := os.Remove(u.installPath); err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("remove old binary: %w", err)
-	}
-	if err := os.Rename(binaryPath, u.installPath); err != nil {
+	if err := u.atomicReplace(binaryPath, u.installPath); err != nil {
 		return "", fmt.Errorf("install new binary: %w", err)
 	}
 
 	return version, nil
+}
+
+// atomicReplace installs src as dst safely across filesystem boundaries. It
+// writes to a temporary file in dst's directory, removes the old dst to avoid
+// "text file busy", and atomically renames the temporary file into place.
+func (u *Updater) atomicReplace(src, dst string) error {
+	if err := copyFile(src, dst+".tmp"); err != nil {
+		return fmt.Errorf("copy new binary: %w", err)
+	}
+	if err := os.Chmod(dst+".tmp", 0o755); err != nil {
+		_ = os.Remove(dst + ".tmp")
+		return err
+	}
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(dst + ".tmp")
+		return fmt.Errorf("remove old binary: %w", err)
+	}
+	if err := os.Rename(dst+".tmp", dst); err != nil {
+		_ = os.Remove(dst + ".tmp")
+		return fmt.Errorf("rename new binary: %w", err)
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 func (u *Updater) downloadFile(ctx context.Context, url, dest string) error {
