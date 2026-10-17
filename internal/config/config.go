@@ -13,6 +13,7 @@ import (
 const (
 	DefaultInterval            = 5 * time.Minute
 	MinInterval                = 1 * time.Minute
+	DefaultJitter              = 30 * time.Second
 	DefaultBeginMarker         = "# BEGIN key-daemon"
 	DefaultEndMarker           = "# END key-daemon"
 	DefaultMaxBackups          = 10
@@ -156,6 +157,7 @@ type Config struct {
 	Metrics             Metrics      `yaml:"metrics"`
 	RemoteConfig        RemoteConfig `yaml:"remote_config"`
 	StatusFile          string       `yaml:"status_file"`
+	Jitter              Duration     `yaml:"jitter"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -210,6 +212,7 @@ func Default() *Config {
 		RemoteConfig: RemoteConfig{
 			Interval: Duration(DefaultInterval),
 		},
+		Jitter: Duration(DefaultJitter),
 	}
 }
 
@@ -217,6 +220,12 @@ func Default() *Config {
 func (c *Config) Validate() error {
 	if c.Interval.Duration() < MinInterval {
 		return fmt.Errorf("interval must be at least %s", MinInterval)
+	}
+	if c.Jitter.Duration() < 0 {
+		return errors.New("jitter must not be negative")
+	}
+	if c.Jitter.Duration() >= c.Interval.Duration() {
+		return fmt.Errorf("jitter (%s) must be less than interval (%s)", c.Jitter.Duration(), c.Interval.Duration())
 	}
 
 	if c.Markers.Begin == "" || c.Markers.End == "" {

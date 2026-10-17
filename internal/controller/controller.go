@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -83,6 +84,8 @@ type Controller struct {
 
 	// For tests: interval override.
 	interval time.Duration
+	// For tests: max random jitter added to each interval.
+	jitter time.Duration
 	// For tests: injected signal channel. If nil, real signals are used.
 	testSignalCh chan os.Signal
 	// For tests: override runtime user checks.
@@ -397,6 +400,9 @@ func (c *Controller) signalChannel() chan os.Signal {
 func (c *Controller) runLoop(ctx context.Context, sigCh chan os.Signal, watchCh <-chan struct{}) error {
 	for {
 		interval := c.currentInterval()
+		if c.jitter > 0 {
+			interval += time.Duration(rand.Int63n(int64(c.jitter)))
+		}
 		c.log.Debug("sleeping until next sync", map[string]string{"interval": interval.String()})
 
 		timer := time.NewTimer(interval)
@@ -810,6 +816,7 @@ func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
 			cfg.StatusFile = c.defaultStatusPath(false)
 			cfg.DiscoverUserConfigs = true
 			c.interval = cfg.Interval.Duration()
+			c.jitter = cfg.Jitter.Duration()
 			c.statusPath = cfg.StatusFile
 			c.log.Info("no global config found, using defaults with per-user discovery", map[string]string{
 				"config_path": c.configPath,
@@ -819,6 +826,7 @@ func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	c.interval = cfg.Interval.Duration()
+	c.jitter = cfg.Jitter.Duration()
 	if cfg.StatusFile == "" {
 		cfg.StatusFile = c.defaultStatusPath(c.isRootFn())
 	}
