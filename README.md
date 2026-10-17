@@ -242,6 +242,25 @@ Available metrics:
 - `key_daemon_users`
 - `key_daemon_keys`
 
+### Status file
+
+After each sync cycle the daemon writes a small JSON status file:
+
+```yaml
+status_file: /var/lib/key-daemon/status.json
+```
+
+Default paths:
+
+- **root:** `/var/lib/key-daemon/status.json`
+- **non-root:** `~/.cache/key-daemon/status.json`
+
+Query it with:
+
+```bash
+key-daemon status
+```
+
 ### Remote configuration
 
 If you run many nodes, you can point them at a central HTTPS endpoint that
@@ -258,6 +277,28 @@ remote_config:
 The remote URL must use HTTPS and the downloaded config is validated before it
 replaces the local file. If the remote endpoint is unreachable or returns an
 invalid config, the node keeps running from the last known local config.
+
+### Operations commands
+
+Validate the configuration before pushing it to your fleet:
+
+```bash
+key-daemon config --validate
+key-daemon config --validate -config /tmp/config.yaml
+```
+
+Force a remote config pull immediately:
+
+```bash
+key-daemon config --pull
+key-daemon config --pull --validate
+```
+
+Show the latest sync status:
+
+```bash
+key-daemon status
+```
 
 ### Update checks
 

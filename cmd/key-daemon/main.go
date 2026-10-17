@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/controller"
@@ -42,16 +43,29 @@ func wantsHelp(args []string) bool {
 }
 
 func run(args []string) error {
-	// Determine subcommand. Default is "run" for backward compatibility with
-	// flag-only invocations like `key-daemon --config ...`.
+	// First, scan arguments to find the subcommand while tolerating global
+	// flags before or after the command name (e.g. "key-daemon -config x
+	// status" and "key-daemon status -config x" both work).
 	subcommand := "run"
+	var leadingFlags []string
 	flagArgs := args[1:]
-	if len(args) > 1 && !strings.HasPrefix(args[1], "-") && !strings.HasPrefix(args[1], "--") {
-		subcommand = args[1]
-		flagArgs = args[2:]
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") {
+			leadingFlags = append(leadingFlags, arg)
+			// If the flag takes a value, consume the next argument as well.
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				leadingFlags = append(leadingFlags, args[i+1])
+				i++
+			}
+			continue
+		}
+		subcommand = arg
+		flagArgs = args[i+1:]
+		break
 	}
 
-	if subcommand == "help" || wantsHelp(flagArgs) {
+	if subcommand == "help" || wantsHelp(append(leadingFlags, flagArgs...)) {
 		if subcommand == "help" {
 			printTopLevelHelp()
 		} else {
@@ -61,12 +75,33 @@ func run(args []string) error {
 	}
 
 	var cfgPath, logLevel string
+
+	// Apply any leading global flags so defaults are set before the command
+	// flag set is created. We keep these values to seed the command flag set,
+	// which would otherwise reset them to defaults when it registers the same
+	// flags.
+	preCfgPath := config.DefaultConfigPath
+	preLogLevel := "info"
+	if len(leadingFlags) > 0 {
+		pre := flag.NewFlagSet("key-daemon", flag.ContinueOnError)
+		pre.SetOutput(os.Stderr)
+		parseCommon(pre, &preCfgPath, &preLogLevel)
+		_ = pre.Parse(leadingFlags)
+	}
+	cfgPath = preCfgPath
+	logLevel = preLogLevel
+
 	fs := flag.NewFlagSet("key-daemon "+subcommand, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	parseCommon(fs, &cfgPath, &logLevel)
+	// Re-apply leading flag values; command-specific flags will override them
+	// during fs.Parse if provided there as well.
+	cfgPath = preCfgPath
+	logLevel = preLogLevel
 
 	var dryRun bool
 	var check bool
+	var validate, pull bool
 
 	switch subcommand {
 	case "version":
@@ -77,6 +112,12 @@ func run(args []string) error {
 		fs.Usage = func() { printSubcommandHelp("sync") }
 	case "restore":
 		fs.Usage = func() { printSubcommandHelp("restore") }
+	case "config":
+		fs.BoolVar(&validate, "validate", false, "Validate the configuration file")
+		fs.BoolVar(&pull, "pull", false, "Force a remote config fetch")
+		fs.Usage = func() { printSubcommandHelp("config") }
+	case "status":
+		fs.Usage = func() { printSubcommandHelp("status") }
 	case "self-update":
 		fs.Usage = func() { printSubcommandHelp("self-update") }
 	case "run":
@@ -127,6 +168,44 @@ func run(args []string) error {
 		fmt.Printf("Restored authorized_keys for %s\n", username)
 		return nil
 
+	case "config":
+		if !validate && !pull {
+			printSubcommandHelp("config")
+			return nil
+		}
+		ctrl := controller.New(cfgPath, log, version)
+		if pull {
+			if err := ctrl.RemoteConfigPull(context.Background()); err != nil {
+				return err
+			}
+		}
+		if validate {
+			if err := ctrl.Validate(context.Background()); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case "status":
+		ctrl := controller.New(cfgPath, log, version)
+		status, err := ctrl.Status()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("config:        %s\n", status.ConfigPath)
+		if status.RemoteURL != "" {
+			fmt.Printf("remote config: %s\n", status.RemoteURL)
+		}
+		fmt.Printf("last sync:     %s\n", status.LastSync.Format(time.RFC3339))
+		if status.LastSyncOK {
+			fmt.Println("last result:   success")
+		} else {
+			fmt.Println("last result:   failure")
+		}
+		fmt.Printf("users:         %d\n", status.Users)
+		fmt.Printf("keys:          %d\n", status.Keys)
+		return nil
+
 	case "self-update":
 		updater, err := selfupdate.New()
 		if err != nil {
@@ -151,7 +230,7 @@ func run(args []string) error {
 		return ctrl.Run(ctx)
 
 	default:
-		return fmt.Errorf("unknown subcommand %q (expected run, sync, restore, version, or self-update)", subcommand)
+		return fmt.Errorf("unknown subcommand %q (expected run, sync, restore, config, status, version, or self-update)", subcommand)
 	}
 }
 
@@ -213,6 +292,38 @@ Examples:
   sudo key-daemon restore -log-level debug root
   key-daemon restore   # restores the current user when not root`)
 
+	case "config":
+		fmt.Println(`Usage: key-daemon config [flags]
+
+Inspect and manage the key-daemon configuration file.
+
+Flags:
+  -config string
+        Path to configuration file (default "/etc/key-daemon/config.yaml")
+  -log-level string
+        Log level: debug, info, warn, error (default "info")
+  -pull
+        Force an immediate remote config fetch and overwrite the local file
+  -validate
+        Load and validate the configuration file
+
+Examples:
+  key-daemon config --validate
+  key-daemon config --pull --validate
+  key-daemon config -config /tmp/config.yaml --validate`)
+
+	case "status":
+		fmt.Println(`Usage: key-daemon status [flags]
+
+Print the most recent sync status persisted by the daemon. The status file is
+updated after every sync cycle and is readable without running a sync.
+
+Flags:
+  -config string
+        Path to configuration file (default "/etc/key-daemon/config.yaml")
+  -log-level string
+        Log level: debug, info, warn, error (default "info")`)
+
 	case "version":
 		fmt.Println(`Usage: key-daemon version [flags]
 
@@ -258,6 +369,8 @@ Commands:
   run           Run the continuous synchronization daemon
   sync          Run a one-shot synchronization
   restore       Restore authorized_keys from the most recent backup
+  config        Validate or pull the configuration file
+  status        Show the most recent sync status
   version       Print version information
   self-update   Explicitly update the binary to the latest release
 
@@ -272,6 +385,15 @@ Examples:
 
   Restore a user's authorized_keys:
     sudo key-daemon restore alice
+
+  Validate the config:
+    key-daemon config --validate
+
+  Force a remote config pull:
+    key-daemon config --pull
+
+  Show the latest sync status:
+    key-daemon status
 
   Check for a newer release:
     key-daemon version -check`)
