@@ -81,6 +81,11 @@ Edit `/etc/key-daemon/config.yaml`:
 
 ```yaml
 interval: 5m
+
+# Random jitter added to each interval. Spreads out syncs on a fleet of nodes
+# that boot or restart at the same time. Must be less than interval.
+jitter: 30s
+
 markers:
   begin: "# BEGIN key-daemon"
   end: "# END key-daemon"

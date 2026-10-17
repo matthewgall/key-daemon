@@ -170,6 +170,18 @@ users:
 			wantErr: "remote_config.interval must be at least",
 		},
 		{
+			name: "jitter must be less than interval",
+			content: `
+interval: 1m
+jitter: 1m
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "jitter",
+		},
+		{
 			name: "empty markers",
 			content: `
 markers:
