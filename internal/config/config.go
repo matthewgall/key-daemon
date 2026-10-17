@@ -155,6 +155,7 @@ type Config struct {
 	AllowedKeyTypes     []string     `yaml:"allowed_key_types"`
 	Metrics             Metrics      `yaml:"metrics"`
 	RemoteConfig        RemoteConfig `yaml:"remote_config"`
+	StatusFile          string       `yaml:"status_file"`
 }
 
 // Load reads and validates a YAML configuration from the given path.

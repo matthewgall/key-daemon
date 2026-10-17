@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -101,6 +102,21 @@ type Controller struct {
 	// Remote config state.
 	remoteClient  *http.Client
 	remoteLastReq time.Time
+
+	// statusPath is the default path for persisting sync status.
+	statusPath string
+}
+
+// SyncStatus describes the outcome of the most recent sync cycle. It is
+// written to the configured status file so that `key-daemon status` can
+// report on the daemon without runtime coupling.
+type SyncStatus struct {
+	ConfigPath string    `json:"config_path"`
+	RemoteURL  string    `json:"remote_url,omitempty"`
+	LastSync   time.Time `json:"last_sync"`
+	LastSyncOK bool      `json:"last_sync_ok"`
+	Users      int       `json:"users"`
+	Keys       int       `json:"keys"`
 }
 
 // New creates a Controller using production dependencies. The version string
@@ -278,7 +294,7 @@ func (c *Controller) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordMetrics stores the result of the latest sync cycle.
-func (c *Controller) recordMetrics(ok bool, users, keys int) {
+func (c *Controller) recordMetrics(cfg *config.Config, ok bool, users, keys int) {
 	c.metricsMu.Lock()
 	defer c.metricsMu.Unlock()
 	c.metricsSyncCount++
@@ -286,6 +302,38 @@ func (c *Controller) recordMetrics(ok bool, users, keys int) {
 	c.metricsLastOK = ok
 	c.metricsUsers = users
 	c.metricsKeys = keys
+
+	if err := c.writeStatus(cfg, ok, users, keys); err != nil {
+		c.log.Debug("failed to write status file", map[string]string{"error": err.Error()})
+	}
+}
+
+// writeStatus persists a snapshot of the latest sync cycle.
+func (c *Controller) writeStatus(cfg *config.Config, ok bool, users, keys int) error {
+	path := c.StatusFile()
+	if path == "" {
+		return nil
+	}
+	status := SyncStatus{
+		ConfigPath: c.configPath,
+		RemoteURL:  c.remoteConfigPath(cfg),
+		LastSync:   time.Now(),
+		LastSyncOK: ok,
+		Users:      users,
+		Keys:       keys,
+	}
+	data, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // watchConfig returns a channel that receives a value whenever the global
@@ -459,7 +507,7 @@ func (c *Controller) Sync(ctx context.Context) error {
 	}
 
 	ok := len(errs) == 0
-	c.recordMetrics(ok, len(users), totalKeys)
+	c.recordMetrics(cfg, ok, len(users), totalKeys)
 	return errors.Join(errs...)
 }
 
@@ -663,6 +711,93 @@ func (c *Controller) Restore(ctx context.Context, username string) error {
 	return nil
 }
 
+// Validate checks the configuration file and reports whether it is usable. If a
+// remote_config is configured, it also fetches and validates the latest remote
+// payload before the local file is loaded.
+func (c *Controller) Validate(ctx context.Context) error {
+	cfg, err := c.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(c.logOut(), "config is valid (%d users, %d sources)\n", len(cfg.Users), len(cfg.DefaultSources))
+	return nil
+}
+
+// RemoteConfigPull immediately fetches the remote config and writes it to the
+// local config path, bypassing the normal interval throttle.
+func (c *Controller) RemoteConfigPull(ctx context.Context) error {
+	cfg, err := config.Load(c.configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read local config: %w", err)
+	}
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		cfg = config.Default()
+	}
+	if cfg.RemoteConfig.URL == "" {
+		return errors.New("remote_config.url is not set")
+	}
+
+	data, err := c.fetchRemoteConfig(ctx, cfg.RemoteConfig)
+	if err != nil {
+		return fmt.Errorf("fetch remote config: %w", err)
+	}
+	if _, err := config.LoadBytes(data); err != nil {
+		return fmt.Errorf("remote config failed validation: %w", err)
+	}
+
+	existing, err := os.ReadFile(c.configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read existing config: %w", err)
+	}
+	if string(existing) == string(data) {
+		fmt.Fprintln(c.logOut(), "remote config unchanged")
+		return nil
+	}
+
+	if err := os.WriteFile(c.configPath, data, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	fmt.Fprintf(c.logOut(), "pulled remote config from %s\n", cfg.RemoteConfig.URL)
+	return nil
+}
+
+// Status reads the persisted sync status file. If no explicit status file is
+// configured, the controller loads the config to determine the default path.
+func (c *Controller) Status() (*SyncStatus, error) {
+	path := c.statusPath
+	if path == "" {
+		cfg, err := config.Load(c.configPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("load config: %w", err)
+		}
+		if err != nil {
+			cfg = config.Default()
+		}
+		if cfg.StatusFile != "" {
+			path = cfg.StatusFile
+		} else {
+			path = c.defaultStatusPath(c.isRootFn())
+		}
+	}
+	if path == "" {
+		return nil, errors.New("no status file is configured")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read status file: %w", err)
+	}
+	var status SyncStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, fmt.Errorf("parse status file: %w", err)
+	}
+	return &status, nil
+}
+
+// logOut returns the destination used for command output. Tests can override.
+func (c *Controller) logOut() *os.File {
+	return os.Stdout
+}
+
 func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
 	if err := c.maybeFetchRemoteConfig(ctx); err != nil {
 		c.log.Warn("remote config fetch failed, using local config", map[string]string{"error": err.Error()})
@@ -672,8 +807,10 @@ func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) && !c.isRootFn() {
 			cfg = config.Default()
+			cfg.StatusFile = c.defaultStatusPath(false)
 			cfg.DiscoverUserConfigs = true
 			c.interval = cfg.Interval.Duration()
+			c.statusPath = cfg.StatusFile
 			c.log.Info("no global config found, using defaults with per-user discovery", map[string]string{
 				"config_path": c.configPath,
 			})
@@ -682,7 +819,39 @@ func (c *Controller) loadConfig(ctx context.Context) (*config.Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	c.interval = cfg.Interval.Duration()
+	if cfg.StatusFile == "" {
+		cfg.StatusFile = c.defaultStatusPath(c.isRootFn())
+	}
+	c.statusPath = cfg.StatusFile
 	return cfg, nil
+}
+
+// defaultStatusPath returns the conventional status file path.
+func (c *Controller) defaultStatusPath(root bool) string {
+	if root {
+		return "/var/lib/key-daemon/status.json"
+	}
+	home, err := osuser.LookupId(fmt.Sprintf("%d", os.Getuid()))
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home.HomeDir, ".cache", "key-daemon", "status.json")
+}
+
+func (c *Controller) remoteConfigPath(cfg *config.Config) string {
+	if cfg.RemoteConfig.URL == "" {
+		return ""
+	}
+	return cfg.RemoteConfig.URL
+}
+
+// StatusFile returns the configured status file path, or the empty string if
+// none is configured and no default could be determined.
+func (c *Controller) StatusFile() string {
+	if c.statusPath != "" {
+		return c.statusPath
+	}
+	return c.defaultStatusPath(c.isRootFn())
 }
 
 // maybeFetchRemoteConfig pulls the latest configuration from a configured

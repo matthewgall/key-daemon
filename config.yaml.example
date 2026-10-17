@@ -33,6 +33,11 @@ remote_config:
   # token: "${KEY_DAEMON_REMOTE_TOKEN}"
   interval: 5m
 
+# Optional status file written after each sync. If omitted, the daemon uses
+# /var/lib/key-daemon/status.json when running as root and
+# ~/.cache/key-daemon/status.json otherwise.
+# status_file: /var/lib/key-daemon/status.json
+
 # Discover per-user configs in ~/.config/key-daemon/config.yaml.
 discover_user_configs: false
 

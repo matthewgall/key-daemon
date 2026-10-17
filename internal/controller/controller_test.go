@@ -85,6 +85,38 @@ func TestRestoreDefaultsToCurrentUserWhenNotRoot(t *testing.T) {
 	}
 }
 
+func TestWriteAndReadStatus(t *testing.T) {
+	log := logger.New(logger.ErrorLevel)
+	ctrl := newTestController(t, writeConfig(t, ""), log)
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	ctrl.statusPath = statusPath
+
+	cfg, err := config.Load(writeConfig(t, `
+users:
+  - name: root
+    sources:
+      - github:coder
+`))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if err := ctrl.writeStatus(cfg, true, 3, 7); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+	if _, err := os.Stat(statusPath); err != nil {
+		t.Errorf("status file not created: %v", err)
+	}
+
+	status, err := ctrl.Status()
+	if err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	if status.Users != 3 || status.Keys != 7 || !status.LastSyncOK {
+		t.Errorf("unexpected status: %+v", status)
+	}
+}
+
 func TestSyncHappyPath(t *testing.T) {
 	path := writeConfig(t, `
 users:
