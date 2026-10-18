@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -123,9 +124,11 @@ type Metrics struct {
 
 // RemoteConfig describes a remote source of truth for the configuration file.
 type RemoteConfig struct {
-	URL      string   `yaml:"url"`
-	Token    string   `yaml:"token"`
-	Interval Duration `yaml:"interval"`
+	URL          string   `yaml:"url"`
+	SignatureURL string   `yaml:"signature_url"`
+	PublicKey    string   `yaml:"public_key"`
+	Token        string   `yaml:"token"`
+	Interval     Duration `yaml:"interval"`
 }
 
 // Markers holds the authorized_keys section delimiters.
@@ -142,17 +145,17 @@ type User struct {
 
 // Config is the top-level daemon configuration.
 type Config struct {
-	Interval            Duration `yaml:"interval"`
-	Markers             Markers  `yaml:"markers"`
-	Backups             Backups  `yaml:"backups"`
-	DefaultSources      []Source `yaml:"default_sources"`
-	Users               []User   `yaml:"users"`
-	DiscoverUserConfigs bool     `yaml:"discover_user_configs"`
-	AllowedUserSources  []string `yaml:"allowed_user_sources"`
-	DiscoverSkipShells  []string `yaml:"discover_skip_shells"`
-	RunValidation       bool     `yaml:"validate"`
-	CheckForUpdates     bool     `yaml:"check_for_updates"`
-	UpdateCheckInterval Duration `yaml:"update_check_interval"`
+	Interval            Duration     `yaml:"interval"`
+	Markers             Markers      `yaml:"markers"`
+	Backups             Backups      `yaml:"backups"`
+	DefaultSources      []Source     `yaml:"default_sources"`
+	Users               []User       `yaml:"users"`
+	DiscoverUserConfigs bool         `yaml:"discover_user_configs"`
+	AllowedUserSources  []string     `yaml:"allowed_user_sources"`
+	DiscoverSkipShells  []string     `yaml:"discover_skip_shells"`
+	RunValidation       bool         `yaml:"validate"`
+	CheckForUpdates     bool         `yaml:"check_for_updates"`
+	UpdateCheckInterval Duration     `yaml:"update_check_interval"`
 	AllowedKeyTypes     []string     `yaml:"allowed_key_types"`
 	Metrics             Metrics      `yaml:"metrics"`
 	RemoteConfig        RemoteConfig `yaml:"remote_config"`
@@ -284,6 +287,21 @@ func (c *Config) Validate() error {
 		}
 		if c.RemoteConfig.Interval.Duration() < MinInterval {
 			return fmt.Errorf("remote_config.interval must be at least %s", MinInterval)
+		}
+	}
+	if c.RemoteConfig.PublicKey != "" {
+		if c.RemoteConfig.SignatureURL == "" && c.RemoteConfig.URL == "" {
+			return errors.New("remote_config.signature_url is required when public_key is set")
+		}
+		key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(c.RemoteConfig.PublicKey))
+		if err != nil {
+			return fmt.Errorf("remote_config.public_key is invalid: %w", err)
+		}
+		switch key.Type() {
+		case "ssh-ed25519", "ssh-rsa", "ssh-ecdsa-sha2-nistp256", "ssh-ecdsa-sha2-nistp384", "ssh-ecdsa-sha2-nistp521":
+			// supported
+		default:
+			return fmt.Errorf("remote_config.public_key has unsupported type %q", key.Type())
 		}
 	}
 

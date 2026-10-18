@@ -1,11 +1,16 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 )
 
 func TestRunVersionCommand(t *testing.T) {
@@ -95,5 +100,43 @@ func TestRunVersionFlag(t *testing.T) {
 	out, _ := io.ReadAll(r)
 	if !strings.Contains(string(out), version) {
 		t.Errorf("expected version in output, got %q", string(out))
+	}
+}
+
+func TestRunSignCommand(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	keyPEM, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatalf("marshal private key: %v", err)
+	}
+
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "sign-key")
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(keyPEM), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	dataPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(dataPath, []byte("interval: 5m\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	sigPath := filepath.Join(dir, "config.yaml.sig")
+
+	err = run([]string{"key-daemon", "sign", "-key", keyPath, dataPath, sigPath})
+	if err != nil {
+		t.Fatalf("sign command: %v", err)
+	}
+
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		t.Fatalf("read signature: %v", err)
+	}
+	if !strings.Contains(string(sig), "-----BEGIN SSH SIGNATURE-----") {
+		t.Errorf("signature missing armor header: %q", sig)
 	}
 }

@@ -283,6 +283,31 @@ The remote URL must use HTTPS and the downloaded config is validated before it
 replaces the local file. If the remote endpoint is unreachable or returns an
 invalid config, the node keeps running from the last known local config.
 
+#### Signed remote configs
+
+You can sign the central config with an SSH key so nodes can verify it before
+installing it. Use `key-daemon sign` (or `ssh-keygen -Y sign`) to produce a
+detached signature:
+
+```bash
+key-daemon sign -key ~/.ssh/id_ed25519 config.yaml config.yaml.sig
+```
+
+Then host the signature next to the config and configure each node with the
+matching public key:
+
+```yaml
+remote_config:
+  url: https://key-daemon.example.com/config.yaml
+  signature_url: https://key-daemon.example.com/config.yaml.sig
+  public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GKHuG2bJ55x2wv5F_qDFLZxFKL3ZGe1kqx93Gf"
+  interval: 5m
+```
+
+`signature_url` defaults to `<url>.sig` when omitted. If the signature is
+missing, invalid, or signed by a different key, the daemon refuses the update
+and keeps the existing local config.
+
 ### Operations commands
 
 Validate the configuration before pushing it to your fleet:

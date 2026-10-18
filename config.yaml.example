@@ -37,6 +37,15 @@ remote_config:
   # token: "${KEY_DAEMON_REMOTE_TOKEN}"
   interval: 5m
 
+  # Optional SSH signature verification. If public_key is set, the daemon also
+  # fetches a detached SSHSIG signature and verifies it before installing the
+  # remote config. The public_key accepts the same authorized_keys format used
+  # for SSH (e.g. "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5..."). Use
+  # `key-daemon sign` to produce the signature file.
+  # signature_url defaults to "<url>.sig" when omitted.
+  # signature_url: "https://example.com/config.yaml.sig"
+  # public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GKHuG2bJ55x2wv5F_qDFLZxFKL3ZGe1kqx93Gf"
+
 # Optional status file written after each sync. If omitted, the daemon uses
 # /var/lib/key-daemon/status.json when running as root and
 # ~/.cache/key-daemon/status.json otherwise.

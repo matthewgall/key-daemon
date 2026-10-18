@@ -1,11 +1,16 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -170,6 +175,31 @@ users:
 			wantErr: "remote_config.interval must be at least",
 		},
 		{
+			name: "remote config public key requires signature url",
+			content: `
+remote_config:
+  public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GKHuG2bJ55x2wv5F_qDFLZxFKL3ZGe1kqx93Gf"
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "signature_url is required",
+		},
+		{
+			name: "remote config invalid public key",
+			content: `
+remote_config:
+  url: https://example.com/config.yaml
+  public_key: "not-a-key"
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "public_key is invalid",
+		},
+		{
 			name: "jitter must be less than interval",
 			content: `
 interval: 1m
@@ -225,6 +255,44 @@ users:
 				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRemoteConfigSigning(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatalf("create signer: %v", err)
+	}
+	pubLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+
+	content := fmt.Sprintf(`
+remote_config:
+  url: https://example.com/config.yaml
+  signature_url: https://example.com/config.yaml.sig
+  public_key: %q
+  interval: 1h
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`, pubLine)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.RemoteConfig.PublicKey != pubLine {
+		t.Errorf("public key not loaded correctly")
 	}
 }
 
