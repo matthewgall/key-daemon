@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -14,7 +15,10 @@ import (
 	"github.com/matthewgall/key-daemon/internal/controller"
 	"github.com/matthewgall/key-daemon/internal/logger"
 	"github.com/matthewgall/key-daemon/internal/selfupdate"
+	"github.com/matthewgall/key-daemon/internal/signconfig"
 	"github.com/matthewgall/key-daemon/internal/update"
+
+	"golang.org/x/crypto/ssh"
 )
 
 var version = "dev"
@@ -102,6 +106,11 @@ func run(args []string) error {
 	var dryRun bool
 	var check bool
 	var validate, pull bool
+	var (
+		signKeyPath   string
+		signNamespace string
+		signHashAlg   string
+	)
 
 	switch subcommand {
 	case "version":
@@ -116,6 +125,11 @@ func run(args []string) error {
 		fs.BoolVar(&validate, "validate", false, "Validate the configuration file")
 		fs.BoolVar(&pull, "pull", false, "Force a remote config fetch")
 		fs.Usage = func() { printSubcommandHelp("config") }
+	case "sign":
+		fs.StringVar(&signKeyPath, "key", os.Getenv("KEY_DAEMON_SIGN_KEY"), "Path to the SSH private key used to sign")
+		fs.StringVar(&signNamespace, "namespace", signconfig.DefaultNamespace, "SSHSIG namespace")
+		fs.StringVar(&signHashAlg, "hash", signconfig.DefaultHash, "Hash algorithm used for the signed digest")
+		fs.Usage = func() { printSubcommandHelp("sign") }
 	case "status":
 		fs.Usage = func() { printSubcommandHelp("status") }
 	case "self-update":
@@ -135,6 +149,20 @@ func run(args []string) error {
 	log := logger.New(level)
 
 	switch subcommand {
+	case "sign":
+		if signKeyPath == "" {
+			return errors.New("-key is required (or set KEY_DAEMON_SIGN_KEY)")
+		}
+		args := fs.Args()
+		if len(args) != 2 {
+			return errors.New("usage: key-daemon sign [flags] <input.yaml> <output.sig>")
+		}
+		if err := signConfig(signKeyPath, args[0], args[1], signNamespace, signHashAlg); err != nil {
+			return err
+		}
+		fmt.Printf("Signed %s -> %s\n", args[0], args[1])
+		return nil
+
 	case "version":
 		if !check {
 			fmt.Println(version)
@@ -230,8 +258,49 @@ func run(args []string) error {
 		return ctrl.Run(ctx)
 
 	default:
-		return fmt.Errorf("unknown subcommand %q (expected run, sync, restore, config, status, version, or self-update)", subcommand)
+		return fmt.Errorf("unknown subcommand %q (expected run, sync, restore, config, sign, status, version, or self-update)", subcommand)
 	}
+}
+
+func signConfig(keyPath, inputPath, outputPath, namespace, hashAlg string) error {
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("read private key: %w", err)
+	}
+
+	var signer ssh.Signer
+	signer, err = ssh.ParsePrivateKey(keyBytes)
+	if err != nil {
+		var passphraseErr *ssh.PassphraseMissingError
+		if errors.As(err, &passphraseErr) {
+			passphrase := os.Getenv("KEY_DAEMON_SIGN_PASSPHRASE")
+			if passphrase == "" {
+				return fmt.Errorf("private key is encrypted; set KEY_DAEMON_SIGN_PASSPHRASE")
+			}
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
+			if err != nil {
+				return fmt.Errorf("decrypt private key: %w", err)
+			}
+		} else {
+			return fmt.Errorf("parse private key: %w", err)
+		}
+	}
+
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("read input file: %w", err)
+	}
+
+	out, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("create output file: %w", err)
+	}
+	defer out.Close()
+
+	return signconfig.SignTo(signer, data, signconfig.SignerOptions{
+		Namespace: namespace,
+		HashAlg:   hashAlg,
+	}, out)
 }
 
 // printSubcommandHelp writes detailed help for a command to stdout.
@@ -324,6 +393,30 @@ Flags:
   -log-level string
         Log level: debug, info, warn, error (default "info")`)
 
+	case "sign":
+		fmt.Println(`Usage: key-daemon sign [flags] <input.yaml> <output.sig>
+
+Sign a remote configuration file using the OpenSSH SSHSIG detached signature
+format. The resulting signature can be verified by nodes with remote_config.
+
+Flags:
+  -hash string
+        Hash algorithm used for the signed digest (default "sha512")
+  -key string
+        Path to the SSH private key (or KEY_DAEMON_SIGN_KEY environment var)
+  -namespace string
+        SSHSIG namespace (default "key-daemon")
+
+Environment:
+  KEY_DAEMON_SIGN_KEY
+        Default private key path
+  KEY_DAEMON_SIGN_PASSPHRASE
+        Passphrase for encrypted private keys
+
+Examples:
+  key-daemon sign -key ~/.ssh/id_ed25519 config.yaml config.yaml.sig
+  KEY_DAEMON_SIGN_KEY=~/.ssh/id_ed25519 key-daemon sign config.yaml config.yaml.sig`)
+
 	case "version":
 		fmt.Println(`Usage: key-daemon version [flags]
 
@@ -370,6 +463,7 @@ Commands:
   sync          Run a one-shot synchronization
   restore       Restore authorized_keys from the most recent backup
   config        Validate or pull the configuration file
+  sign          Sign a remote configuration file
   status        Show the most recent sync status
   version       Print version information
   self-update   Explicitly update the binary to the latest release

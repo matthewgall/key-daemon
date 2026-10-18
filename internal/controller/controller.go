@@ -19,6 +19,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/matthewgall/key-daemon/internal/authkeys"
+	"github.com/matthewgall/key-daemon/internal/signconfig"
+
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/discovery"
 	"github.com/matthewgall/key-daemon/internal/fetch"
@@ -28,6 +30,7 @@ import (
 	"github.com/matthewgall/key-daemon/internal/sshd"
 	"github.com/matthewgall/key-daemon/internal/update"
 	"github.com/matthewgall/key-daemon/internal/user"
+	"golang.org/x/crypto/ssh"
 )
 
 // userResolver looks up local user records.
@@ -457,8 +460,8 @@ func (c *Controller) maybeCheckForUpdates(ctx context.Context, cfg *config.Confi
 	if update.IsNewer(c.version, latest.Version) {
 		c.log.Warn("a newer version of key-daemon is available",
 			map[string]string{
-				"current":     c.version,
-				"latest":      latest.Version,
+				"current":      c.version,
+				"latest":       latest.Version,
 				"download_url": latest.URL,
 			})
 	} else {
@@ -624,10 +627,10 @@ func (c *Controller) syncUser(ctx context.Context, cfg *config.Config, u config.
 	filtered := keys.FilterByType(parsed, cfg.AllowedKeyTypes)
 	if len(cfg.AllowedKeyTypes) > 0 {
 		c.log.Debug("filtered keys by type", map[string]string{
-			"user":           u.Name,
-			"before":         fmt.Sprintf("%d", len(parsed)),
-			"after":          fmt.Sprintf("%d", len(filtered)),
-			"allowed_types":  strings.Join(cfg.AllowedKeyTypes, ","),
+			"user":          u.Name,
+			"before":        fmt.Sprintf("%d", len(parsed)),
+			"after":         fmt.Sprintf("%d", len(filtered)),
+			"allowed_types": strings.Join(cfg.AllowedKeyTypes, ","),
 		})
 	}
 	if len(filtered) == 0 {
@@ -909,6 +912,34 @@ func (c *Controller) maybeFetchRemoteConfig(ctx context.Context) error {
 }
 
 func (c *Controller) fetchRemoteConfig(ctx context.Context, rc config.RemoteConfig) ([]byte, error) {
+	data, err := c.fetchURL(ctx, rc.URL, rc.Token)
+	if err != nil {
+		return nil, err
+	}
+
+	if rc.PublicKey != "" {
+		sigURL := rc.SignatureURL
+		if sigURL == "" {
+			sigURL = rc.URL + ".sig"
+		}
+		sigData, err := c.fetchURL(ctx, sigURL, rc.Token)
+		if err != nil {
+			return nil, fmt.Errorf("fetch remote config signature: %w", err)
+		}
+
+		pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(rc.PublicKey))
+		if err != nil {
+			return nil, fmt.Errorf("parse remote_config public key: %w", err)
+		}
+		if err := signconfig.Verify(data, sigData, pubKey, signconfig.VerifyOptions{Namespace: signconfig.DefaultNamespace}); err != nil {
+			return nil, fmt.Errorf("verify remote config signature: %w", err)
+		}
+	}
+
+	return data, nil
+}
+
+func (c *Controller) fetchURL(ctx context.Context, url, token string) ([]byte, error) {
 	if c.remoteClient == nil {
 		c.remoteClient = &http.Client{
 			Timeout: 30 * time.Second,
@@ -918,12 +949,12 @@ func (c *Controller) fetchRemoteConfig(ctx context.Context, rc config.RemoteConf
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rc.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent(c.version))
-	if token := os.ExpandEnv(rc.Token); token != "" {
+	if token := os.ExpandEnv(token); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -933,7 +964,7 @@ func (c *Controller) fetchRemoteConfig(ctx context.Context, rc config.RemoteConf
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("remote config returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("remote URL %s returned status %d", url, resp.StatusCode)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024+1))
@@ -941,7 +972,7 @@ func (c *Controller) fetchRemoteConfig(ctx context.Context, rc config.RemoteConf
 		return nil, err
 	}
 	if len(data) > 5*1024*1024 {
-		return nil, fmt.Errorf("remote config exceeds 5 MiB")
+		return nil, fmt.Errorf("response from %s exceeds 5 MiB", url)
 	}
 	return data, nil
 }

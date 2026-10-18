@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	defaultTimeout   = 30 * time.Second
-	defaultRetries   = 3
-	defaultRetryGap  = 1 * time.Second
-	defaultMaxSize   = 5 * 1024 * 1024 // 5 MiB
+	defaultTimeout  = 30 * time.Second
+	defaultRetries  = 3
+	defaultRetryGap = 1 * time.Second
+	defaultMaxSize  = 5 * 1024 * 1024 // 5 MiB
 )
 
 // maxBodySize is the maximum response body the client will read. It can be
