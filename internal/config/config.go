@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/matthewgall/key-daemon/internal/target"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -139,8 +140,9 @@ type Markers struct {
 
 // User holds per-user configuration.
 type User struct {
-	Name    string   `yaml:"name"`
-	Sources []Source `yaml:"sources,omitempty"`
+	Name    string      `yaml:"name"`
+	Sources []Source    `yaml:"sources,omitempty"`
+	When    target.Rule `yaml:"when,omitempty"`
 }
 
 // Config is the top-level daemon configuration.
@@ -314,6 +316,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate user %q at users[%d] and users[%d]", u.Name, prev, i)
 		}
 		seenUsers[u.Name] = i
+
+		if err := u.When.Validate(); err != nil {
+			return fmt.Errorf("users[%d].when: %w", i, err)
+		}
 
 		sources := u.Sources
 		if len(sources) == 0 {

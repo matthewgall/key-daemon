@@ -63,6 +63,29 @@ allowed_user_sources:
   - launchpad
   - sshid
 
+# Optional targeting rules per user. A user entry is only applied when all
+# non-empty conditions match the current host. Conditions support shell-style
+# glob patterns for hostname and os, and CIDR notation for ip. If "when" is
+# omitted, the user applies to every host.
+#
+# Available conditions:
+#   hostname  - value of `hostname` (glob, case-insensitive)
+#   os        - ID from /etc/os-release (glob, case-insensitive)
+#   ip        - local address must fall inside the given CIDR
+#
+# Example:
+# users:
+#   - name: root
+#     sources:
+#       - github:common
+#   - name: ubuntu-root
+#     sources:
+#       - github:ubuntu-admins
+#     when:
+#       os: ubuntu
+#       hostname: "web-*"
+#       ip: 10.0.0.0/8
+
 users:
   - name: root
     sources:

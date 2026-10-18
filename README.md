@@ -149,6 +149,41 @@ A per-user config file must:
 
 Users whose shell is `/bin/false`, `/usr/sbin/nologin`, or `/usr/bin/nologin` are skipped.
 
+### Targeting users by host
+
+Each `users` entry can have an optional `when` block that restricts it to hosts matching specific attributes. This lets one fleet-wide config apply different keys to different machines.
+
+```yaml
+users:
+  - name: root
+    sources:
+      - github:common-admins
+
+  - name: ubuntu-root
+    sources:
+      - github:ubuntu-admins
+    when:
+      os: ubuntu
+      hostname: "web-*"
+      ip: 10.0.0.0/8
+
+  - name: db-root
+    sources:
+      - github:db-admins
+    when:
+      hostname: "db-*"
+```
+
+Supported conditions:
+
+| Condition  | Value                                                         |
+|------------|---------------------------------------------------------------|
+| `hostname` | Glob pattern matched against `hostname` (case-insensitive)    |
+| `os`       | Glob pattern matched against `/etc/os-release` `ID` field   |
+| `ip`       | CIDR; the host must have a local address inside it          |
+
+When multiple conditions are given they are ANDed together. If `when` is omitted, the user applies everywhere.
+
 ## Running without root
 
 `key-daemon` can be run by an individual user without root privileges. In this **single-user mode** it only manages the user running it, and skipped users are logged with the reason.

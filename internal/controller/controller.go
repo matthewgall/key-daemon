@@ -20,6 +20,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/matthewgall/key-daemon/internal/authkeys"
 	"github.com/matthewgall/key-daemon/internal/signconfig"
+	"github.com/matthewgall/key-daemon/internal/sysinfo"
 
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/discovery"
@@ -97,6 +98,9 @@ type Controller struct {
 	// lastUpdateCheck tracks when we last queried for updates.
 	lastUpdateCheck time.Time
 
+	// Targeting state.
+	sysInfo sysinfo.Info
+
 	// Metrics state.
 	metricsMu        sync.Mutex
 	metricsSyncCount uint64
@@ -130,9 +134,11 @@ type SyncStatus struct {
 // checks.
 func New(configPath string, log *logger.Logger, version string) *Controller {
 	fetcher := fetch.NewClient(userAgent(version))
+	sinfo, _ := sysinfo.Gather()
 	return &Controller{
 		configPath:    configPath,
 		log:           log,
+		sysInfo:       sinfo,
 		resolver:      resolverFunc(user.Lookup),
 		provider:      sources.NewProvider(fetcher),
 		manager:       nil, // created per-config inside sync
@@ -555,6 +561,16 @@ func (c *Controller) applyRuntimeRestrictions(users []config.User, cfg *config.C
 func (c *Controller) buildUserList(cfg *config.Config) ([]config.User, error) {
 	byName := make(map[string]config.User, len(cfg.Users))
 	for _, u := range cfg.Users {
+		if u.When.Active() {
+			ok, err := u.When.Match(c.sysInfo)
+			if err != nil {
+				return nil, fmt.Errorf("target rule for user %q: %w", u.Name, err)
+			}
+			if !ok {
+				c.log.Debug("skipping user because host does not match target rule", map[string]string{"user": u.Name})
+				continue
+			}
+		}
 		u.Sources = cfg.EffectiveSources(u)
 		byName[u.Name] = u
 	}
