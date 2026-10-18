@@ -200,6 +200,30 @@ users:
 			wantErr: "public_key is invalid",
 		},
 		{
+			name: "invalid target ip",
+			content: `
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+    when:
+      ip: not-a-cidr
+`,
+			wantErr: "invalid target ip",
+		},
+		{
+			name: "invalid target hostname pattern",
+			content: `
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+    when:
+      hostname: "[bad"
+`,
+			wantErr: "invalid target hostname pattern",
+		},
+		{
 			name: "jitter must be less than interval",
 			content: `
 interval: 1m

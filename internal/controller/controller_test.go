@@ -14,6 +14,7 @@ import (
 	"github.com/matthewgall/key-daemon/internal/config"
 	"github.com/matthewgall/key-daemon/internal/discovery"
 	"github.com/matthewgall/key-daemon/internal/logger"
+	"github.com/matthewgall/key-daemon/internal/sysinfo"
 	"github.com/matthewgall/key-daemon/internal/user"
 )
 
@@ -516,3 +517,47 @@ func (m *mockDiscoverer) Discover() ([]discovery.User, error) {
 var _ keyProvider = (*mockProvider)(nil)
 var _ keyManager = (*mockManager)(nil)
 var _ userDiscoverer = (*mockDiscoverer)(nil)
+
+func TestBuildUserListTargeting(t *testing.T) {
+	cfg, err := config.LoadBytes([]byte(`
+users:
+  - name: root
+    sources:
+      - github:everywhere
+  - name: ubuntu-web
+    sources:
+      - github:ubuntuweb
+    when:
+      os: ubuntu
+      hostname: "web-*"
+  - name: db-only
+    sources:
+      - github:dbonly
+    when:
+      hostname: "db-*"
+`))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	ctrl := New("", logger.New(logger.ErrorLevel), "dev")
+	ctrl.sysInfo = sysinfo.Info{
+		Hostname: "web-eu-01",
+		OSID:     "ubuntu",
+	}
+
+	users, err := ctrl.buildUserList(cfg)
+	if err != nil {
+		t.Fatalf("buildUserList: %v", err)
+	}
+
+	names := make([]string, len(users))
+	for i, u := range users {
+		names[i] = u.Name
+	}
+	want := "root,ubuntu-web"
+	got := strings.Join(names, ",")
+	if got != want {
+		t.Errorf("got users %q, want %q", got, want)
+	}
+}
