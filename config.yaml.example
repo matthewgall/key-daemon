@@ -65,13 +65,20 @@ allowed_user_sources:
 
 # Optional targeting rules per user. A user entry is only applied when all
 # non-empty conditions match the current host. Conditions support shell-style
-# glob patterns for hostname and os, and CIDR notation for ip. If "when" is
-# omitted, the user applies to every host.
+# glob patterns for hostname and os, and CIDR notation for ip and public_ip.
+# If "when" is omitted, the user applies to every host.
 #
 # Available conditions:
 #   hostname  - value of `hostname` (glob, case-insensitive)
 #   os        - ID from /etc/os-release (glob, case-insensitive)
 #   ip        - local address must fall inside the given CIDR
+#   public_ip - public address must fall inside the given CIDR
+#
+# To use public_ip targeting, set an HTTPS endpoint that returns the host's
+# public IP, either as plain text or as a JSON object with an "ip" field.
+# The default is empty (disabled).
+#
+# external_ip_url: https://ipinfo.io/ip
 #
 # Example:
 # users:
@@ -85,6 +92,11 @@ allowed_user_sources:
 #       os: ubuntu
 #       hostname: "web-*"
 #       ip: 10.0.0.0/8
+#   - name: public-root
+#     sources:
+#       - github:public-admins
+#     when:
+#       public_ip: 203.0.113.0/24
 
 users:
   - name: root

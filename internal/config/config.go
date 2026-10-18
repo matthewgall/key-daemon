@@ -163,6 +163,7 @@ type Config struct {
 	RemoteConfig        RemoteConfig `yaml:"remote_config"`
 	StatusFile          string       `yaml:"status_file"`
 	Jitter              Duration     `yaml:"jitter"`
+	ExternalIPURL       string       `yaml:"external_ip_url"`
 }
 
 // Load reads and validates a YAML configuration from the given path.
@@ -305,6 +306,9 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("remote_config.public_key has unsupported type %q", key.Type())
 		}
+	}
+	if c.ExternalIPURL != "" && !strings.HasPrefix(c.ExternalIPURL, "https://") {
+		return errors.New("external_ip_url must use https://")
 	}
 
 	seenUsers := make(map[string]int)

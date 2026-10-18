@@ -181,8 +181,26 @@ Supported conditions:
 | `hostname` | Glob pattern matched against `hostname` (case-insensitive)    |
 | `os`       | Glob pattern matched against `/etc/os-release` `ID` field   |
 | `ip`       | CIDR; the host must have a local address inside it          |
+| `public_ip`| CIDR; the host's public IP must fall inside it              |
 
 When multiple conditions are given they are ANDed together. If `when` is omitted, the user applies everywhere.
+
+#### Targeting by public IP
+
+For hosts behind NAT, `ip` matches the local RFC1918 address. To target based on the public WAN IP, set `external_ip_url` and use `public_ip`:
+
+```yaml
+external_ip_url: https://ipinfo.io/ip
+
+users:
+  - name: public-root
+    sources:
+      - github:public-admins
+    when:
+      public_ip: 203.0.113.0/24
+```
+
+The endpoint may return the IP as plain text, or as JSON with an `ip` field (e.g. `https://ipinfo.io/`). The URL must use HTTPS. If the lookup fails, `public_ip` rules fail closed and the user is skipped for that cycle.
 
 ## Running without root
 

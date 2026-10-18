@@ -224,6 +224,17 @@ users:
 			wantErr: "invalid target hostname pattern",
 		},
 		{
+			name: "external_ip_url not https",
+			content: `
+external_ip_url: http://ipinfo.io/
+users:
+  - name: root
+    sources:
+      - github:matthewgall
+`,
+			wantErr: "external_ip_url must use https://",
+		},
+		{
 			name: "jitter must be less than interval",
 			content: `
 interval: 1m

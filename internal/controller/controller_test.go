@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -517,6 +519,68 @@ func (m *mockDiscoverer) Discover() ([]discovery.User, error) {
 var _ keyProvider = (*mockProvider)(nil)
 var _ keyManager = (*mockManager)(nil)
 var _ userDiscoverer = (*mockDiscoverer)(nil)
+
+func TestBuildUserListPublicIPTargeting(t *testing.T) {
+	cfg, err := config.LoadBytes([]byte(`
+external_ip_url: https://ipinfo.io/ip
+users:
+  - name: root
+    sources:
+      - github:everywhere
+  - name: public-host
+    sources:
+      - github:public-admins
+    when:
+      public_ip: 203.0.113.0/24
+`))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	ctrl := New("", logger.New(logger.ErrorLevel), "dev")
+	ctrl.externalIPFn = func(ctx context.Context, client *http.Client, url string) (net.IP, error) {
+		return net.ParseIP("203.0.113.42"), nil
+	}
+	if err := ctrl.refreshExternalIP(context.Background(), cfg); err != nil {
+		t.Fatalf("refreshExternalIP: %v", err)
+	}
+
+	users, err := ctrl.buildUserList(cfg)
+	if err != nil {
+		t.Fatalf("buildUserList: %v", err)
+	}
+
+	names := make([]string, len(users))
+	for i, u := range users {
+		names[i] = u.Name
+	}
+	want := "root,public-host"
+	got := strings.Join(names, ",")
+	if got != want {
+		t.Errorf("got users %q, want %q", got, want)
+	}
+
+	// Now fail the external IP lookup; public-host should be skipped.
+	ctrl.externalIPFn = func(ctx context.Context, client *http.Client, url string) (net.IP, error) {
+		return nil, errors.New("network down")
+	}
+	ctrl.sysInfo.ExternalIP = nil
+	_ = ctrl.refreshExternalIP(context.Background(), cfg)
+
+	users, err = ctrl.buildUserList(cfg)
+	if err != nil {
+		t.Fatalf("buildUserList: %v", err)
+	}
+	names = make([]string, len(users))
+	for i, u := range users {
+		names[i] = u.Name
+	}
+	want = "root"
+	got = strings.Join(names, ",")
+	if got != want {
+		t.Errorf("after external IP failure got users %q, want %q", got, want)
+	}
+}
 
 func TestBuildUserListTargeting(t *testing.T) {
 	cfg, err := config.LoadBytes([]byte(`
