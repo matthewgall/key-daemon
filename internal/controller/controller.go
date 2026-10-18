@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -113,6 +114,10 @@ type Controller struct {
 	remoteClient  *http.Client
 	remoteLastReq time.Time
 
+	// External IP state.
+	externalClient *http.Client
+	externalIPFn   func(ctx context.Context, client *http.Client, url string) (net.IP, error)
+
 	// statusPath is the default path for persisting sync status.
 	statusPath string
 }
@@ -136,18 +141,20 @@ func New(configPath string, log *logger.Logger, version string) *Controller {
 	fetcher := fetch.NewClient(userAgent(version))
 	sinfo, _ := sysinfo.Gather()
 	return &Controller{
-		configPath:    configPath,
-		log:           log,
-		sysInfo:       sinfo,
-		resolver:      resolverFunc(user.Lookup),
-		provider:      sources.NewProvider(fetcher),
-		manager:       nil, // created per-config inside sync
-		validator:     sshd.NewValidator().Validate,
-		discoverer:    nil, // set after config is loaded
-		checker:       update.NewChecker(version),
-		version:       version,
-		currentUserFn: osuserCurrent,
-		isRootFn:      isRoot,
+		configPath:     configPath,
+		log:            log,
+		sysInfo:        sinfo,
+		externalClient: &http.Client{Timeout: 10 * time.Second},
+		externalIPFn:   sysinfo.FetchExternalIP,
+		resolver:       resolverFunc(user.Lookup),
+		provider:       sources.NewProvider(fetcher),
+		manager:        nil, // created per-config inside sync
+		validator:      sshd.NewValidator().Validate,
+		discoverer:     nil, // set after config is loaded
+		checker:        update.NewChecker(version),
+		version:        version,
+		currentUserFn:  osuserCurrent,
+		isRootFn:       isRoot,
 	}
 }
 
@@ -499,6 +506,11 @@ func (c *Controller) Sync(ctx context.Context) error {
 		c.manager = authkeys.NewManager(cfg.Markers, cfg.Backups)
 	}
 
+	if err := c.refreshExternalIP(ctx, cfg); err != nil {
+		c.log.Warn("failed to determine external IP, public_ip targeting rules will fail closed",
+			map[string]string{"error": err.Error()})
+	}
+
 	users, err := c.buildUserList(cfg)
 	if err != nil {
 		return err
@@ -606,6 +618,28 @@ func (c *Controller) buildUserList(cfg *config.Config) ([]config.User, error) {
 	}
 
 	return users, nil
+}
+
+func (c *Controller) refreshExternalIP(ctx context.Context, cfg *config.Config) error {
+	if cfg.ExternalIPURL == "" {
+		return nil
+	}
+	needsExternal := false
+	for _, u := range cfg.Users {
+		if u.When.PublicIP != "" {
+			needsExternal = true
+			break
+		}
+	}
+	if !needsExternal {
+		return nil
+	}
+	ip, err := c.externalIPFn(ctx, c.externalClient, cfg.ExternalIPURL)
+	if err != nil {
+		return err
+	}
+	c.sysInfo.ExternalIP = ip
+	return nil
 }
 
 func (c *Controller) syncUser(ctx context.Context, cfg *config.Config, u config.User) (int, error) {
