@@ -783,8 +783,9 @@ func (c *Controller) Validate(ctx context.Context) error {
 }
 
 // RemoteConfigPull immediately fetches the remote config and writes it to the
-// local config path, bypassing the normal interval throttle.
-func (c *Controller) RemoteConfigPull(ctx context.Context) error {
+// local config path, bypassing the normal interval throttle. If dryRun is true,
+// the fetched config is validated but not written.
+func (c *Controller) RemoteConfigPull(ctx context.Context, dryRun bool) error {
 	cfg, err := config.Load(c.configPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("read local config: %w", err)
@@ -810,6 +811,11 @@ func (c *Controller) RemoteConfigPull(ctx context.Context) error {
 	}
 	if string(existing) == string(data) {
 		fmt.Fprintln(c.logOut(), "remote config unchanged")
+		return nil
+	}
+
+	if dryRun {
+		fmt.Fprintf(c.logOut(), "remote config differs from %s; would write %d bytes (dry-run)\n", cfg.RemoteConfig.URL, len(data))
 		return nil
 	}
 

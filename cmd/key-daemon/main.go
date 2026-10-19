@@ -106,6 +106,7 @@ func run(args []string) error {
 	var dryRun bool
 	var check bool
 	var validate, pull bool
+	var configDryRun bool
 	var (
 		signKeyPath   string
 		signNamespace string
@@ -124,6 +125,7 @@ func run(args []string) error {
 	case "config":
 		fs.BoolVar(&validate, "validate", false, "Validate the configuration file")
 		fs.BoolVar(&pull, "pull", false, "Force a remote config fetch")
+		fs.BoolVar(&configDryRun, "dry-run", false, "Preview remote config changes without writing")
 		fs.Usage = func() { printSubcommandHelp("config") }
 	case "sign":
 		fs.StringVar(&signKeyPath, "key", os.Getenv("KEY_DAEMON_SIGN_KEY"), "Path to the SSH private key used to sign")
@@ -203,7 +205,7 @@ func run(args []string) error {
 		}
 		ctrl := controller.New(cfgPath, log, version)
 		if pull {
-			if err := ctrl.RemoteConfigPull(context.Background()); err != nil {
+			if err := ctrl.RemoteConfigPull(context.Background(), configDryRun); err != nil {
 				return err
 			}
 		}
@@ -369,6 +371,8 @@ Inspect and manage the key-daemon configuration file.
 Flags:
   -config string
         Path to configuration file (default "/etc/key-daemon/config.yaml")
+  -dry-run
+        Preview a remote config pull without overwriting the local file
   -log-level string
         Log level: debug, info, warn, error (default "info")
   -pull
@@ -379,6 +383,7 @@ Flags:
 Examples:
   key-daemon config --validate
   key-daemon config --pull --validate
+  key-daemon config --pull --dry-run
   key-daemon config -config /tmp/config.yaml --validate`)
 
 	case "status":

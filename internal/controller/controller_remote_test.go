@@ -5,12 +5,18 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hiddeco/sshsig"
 	"github.com/matthewgall/key-daemon/internal/config"
+	"github.com/matthewgall/key-daemon/internal/logger"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -107,5 +113,52 @@ func TestFetchRemoteConfigWithBadSignature(t *testing.T) {
 	_, err = ctrl.fetchRemoteConfig(context.Background(), rc)
 	if err == nil {
 		t.Fatal("expected verification error for bad signature")
+	}
+}
+
+func TestRemoteConfigPullDryRun(t *testing.T) {
+	remoteData := []byte("interval: 2m\nvalidate: true\n")
+
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	mux.HandleFunc("/config.yaml", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(remoteData)
+	})
+
+	dir := t.TempDir()
+	localPath := filepath.Join(dir, "config.yaml")
+	localContent := fmt.Sprintf("interval: 5m\nvalidate: true\nremote_config:\n  url: %s/config.yaml\n  interval: 5m\n", server.URL)
+	if err := os.WriteFile(localPath, []byte(localContent), 0o644); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+
+	ctrl := New(localPath, logger.New(logger.ErrorLevel), "dev")
+	ctrl.remoteClient = server.Client()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := ctrl.RemoteConfigPull(context.Background(), true)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("RemoteConfigPull dry-run: %v", err)
+	}
+
+	out, _ := io.ReadAll(r)
+	if !strings.Contains(string(out), "would write") {
+		t.Errorf("expected dry-run output, got %q", string(out))
+	}
+
+	got, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local config: %v", err)
+	}
+	if string(got) != localContent {
+		t.Errorf("local config was modified during dry-run")
 	}
 }

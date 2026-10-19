@@ -377,6 +377,12 @@ key-daemon config --pull
 key-daemon config --pull --validate
 ```
 
+Preview what a remote config pull would change before writing it:
+
+```bash
+key-daemon config --pull --dry-run
+```
+
 Show the latest sync status:
 
 ```bash
